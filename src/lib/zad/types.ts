@@ -1,5 +1,5 @@
 export type Wilaya = { code: number; name: string };
-export type Category = { id: string; name: string };
+export type Category = { id: string; slug: string; name: string };
 export type Plan = {
   id: string;
   name: string;
@@ -21,6 +21,7 @@ export type Listing = {
   rentPrice: string | null;
   wilayaCode: number;
   wilayaName: string;
+  visibility: string;
   status: string;
   troopId: string;
   troopName: string;
@@ -36,6 +37,9 @@ export type TroopCard = {
   about: string;
   status: string;
   listingCount: number;
+  memberCount: number;
+  logo: string | null;
+  thumbnail: string | null;
 };
 
 export type CatalogQuery = {
@@ -62,6 +66,9 @@ export type Me = {
     commune: string;
     about: string;
     phone: string;
+    contactEmail: string;
+    logo: string;
+    thumbnail: string;
     status: string;
     role: string;
   };

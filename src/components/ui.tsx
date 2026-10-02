@@ -12,7 +12,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex h-11 items-center justify-center rounded-md px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex h-11 items-center justify-center rounded-lg px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" && "bg-accent text-accent-fg",
         variant === "ghost" && "border border-border bg-card text-fg",
         variant === "danger" && "bg-danger-soft text-danger",
@@ -24,7 +24,7 @@ export function Button({
 }
 
 export const controlClass =
-  "h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-fg outline-none focus:ring-2 focus:ring-accent/25";
+  "h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
 export function Field({
   label,

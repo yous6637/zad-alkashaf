@@ -100,11 +100,10 @@ export async function runSignOut({
   timeoutMs,
 }) {
   if (livePreview) {
-    // No bearer means a partitioned iframe with nothing to invalidate; with one,
-    // still invalidate it server-side, just don't block on the answer.
-    if (hasBearer) {
-      await settleWithin(requestSignOut, timeoutMs ?? signOutTimeoutMs(livePreview));
-    }
+    // Email/password sessions live in cookies even when there is no preview
+    // bearer. Always ask the server to expire them, but never block the button
+    // on a request that does not settle — the local clear still runs.
+    await settleWithin(requestSignOut, timeoutMs ?? signOutTimeoutMs(livePreview));
     clearToken();
     redirect();
     return;

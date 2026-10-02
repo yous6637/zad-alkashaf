@@ -205,14 +205,14 @@ function AdminPage() {
               rows={data.products.map((product) => [
                 product.title,
                 product.troopName,
-                t(productStatus[product.status as keyof typeof productStatus] ?? "gear.stHidden"),
+                t(product.visibility === "hidden" ? "gear.stHidden" : (productStatus[product.status as keyof typeof productStatus] ?? "gear.stUnavailable")),
                 <Button
                   key={product.id}
                   type="button"
                   variant="ghost"
-                  onClick={() => run(adminHideProduct({ data: { id: product.id, hidden: product.status !== "hidden" } }))}
+                  onClick={() => run(adminHideProduct({ data: { id: product.id, hidden: product.visibility !== "hidden" } }))}
                 >
-                  {product.status === "hidden" ? t("admin.show") : t("admin.hide")}
+                  {product.visibility === "hidden" ? t("admin.show") : t("admin.hide")}
                 </Button>,
               ])}
             />
@@ -233,11 +233,15 @@ function AdminPage() {
                   <p className="text-muted">
                     {report.productTitle}
                     {" · "}
-                    {t(productStatus[report.productStatus as keyof typeof productStatus] ?? "gear.stHidden")}
+                    {t(
+                      report.productVisibility === "hidden"
+                        ? "gear.stHidden"
+                        : (productStatus[report.productStatus as keyof typeof productStatus] ?? "gear.stUnavailable"),
+                    )}
                   </p>
                   {report.note ? <p className="mt-2">{report.note}</p> : null}
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {report.productStatus !== "hidden" ? (
+                    {report.productVisibility !== "hidden" ? (
                       <Button
                         type="button"
                         variant="danger"

@@ -43,7 +43,7 @@ export function ListingCard({ item }: { item: Listing }) {
       <div className="space-y-2 p-4">
         <div className="flex flex-wrap gap-2 text-xs font-medium text-accent">
           <span className="rounded-sm bg-accent-soft px-2 py-1">{operation ? t(operation) : item.operation}</span>
-          <span className="rounded-sm bg-surface px-2 py-1 text-muted">{item.categoryName}</span>
+          <span className="rounded-sm bg-sand-soft px-2 py-1 text-fg">{item.categoryName}</span>
         </div>
         <h3 className="text-base font-semibold">{item.title}</h3>
         <p className="text-sm font-medium tabular-nums text-accent">{price}</p>

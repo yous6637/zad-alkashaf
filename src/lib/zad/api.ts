@@ -56,6 +56,7 @@ function listingSelect(locale: "ar" | "fr" = "ar") {
   p.rent_price_dzd::text as "rentPrice",
   p.wilaya_id as "wilayaCode",
   w.${name} as "wilayaName",
+  p.visibility,
   p.status,
   p.troop_id as "troopId",
   t.name as "troopName",
@@ -64,7 +65,8 @@ function listingSelect(locale: "ar" | "fr" = "ar") {
 }
 
 const visibleListing = `
-  p.status = 'active'
+  p.visibility = 'public'
+  and p.status = 'active'
   and t.status = 'active'
   and has_active_subscription(t.id)
 `;
@@ -77,11 +79,11 @@ export const getMeta = createServerFn({ method: "GET" })
     const sql = await getSql();
     const categories =
       data.locale === "fr"
-        ? await sql<{ id: string; name: string }>`
-            select id, name_fr as name from categories where is_active order by sort_order, name_fr
+        ? await sql<{ id: string; slug: string; name: string }>`
+            select id, slug, name_fr as name from categories where is_active order by sort_order, name_fr
           `
-        : await sql<{ id: string; name: string }>`
-            select id, name_ar as name from categories where is_active order by sort_order, name_ar
+        : await sql<{ id: string; slug: string; name: string }>`
+            select id, slug, name_ar as name from categories where is_active order by sort_order, name_ar
           `;
     const wilayas =
       data.locale === "fr"
@@ -192,13 +194,19 @@ export const listTroops = createServerFn({ method: "GET" })
     return sql.query<TroopCard>(
       `select t.id, t.name, t.wilaya_id as "wilayaCode", w.${name} as "wilayaName",
               t.municipality as commune, t.description as about, t.status,
+              t.logo_path as logo, t.thumbnail_path as thumbnail,
               (
                 select count(*)::int from products p
                 where p.troop_id = t.id
+                  and p.visibility = 'public'
                   and p.status = 'active'
                   and t.status = 'active'
                   and has_active_subscription(t.id)
-              ) as "listingCount"
+              ) as "listingCount",
+              (
+                select count(*)::int from profiles pr
+                where pr.troop_id = t.id and pr.is_active
+              ) as "memberCount"
        from troops t
        join wilayas w on w.id = t.wilaya_id
        where t.status = 'active'
@@ -218,7 +226,12 @@ export const getTroop = createServerFn({ method: "GET" })
     const troops = await sql.query<TroopCard>(
       `select t.id, t.name, t.wilaya_id as "wilayaCode", w.${name} as "wilayaName",
               t.municipality as commune, t.description as about, t.status,
-              0 as "listingCount"
+              t.logo_path as logo, t.thumbnail_path as thumbnail,
+              0 as "listingCount",
+              (
+                select count(*)::int from profiles pr
+                where pr.troop_id = t.id and pr.is_active
+              ) as "memberCount"
        from troops t
        join wilayas w on w.id = t.wilaya_id
        where t.id = $1::uuid and t.status = 'active'`,
@@ -260,11 +273,17 @@ async function loadMe(sql: Sql, userId: string): Promise<Me> {
     commune: string;
     about: string;
     phone: string;
+    contactEmail: string;
+    logo: string;
+    thumbnail: string;
     status: string;
     role: string;
   }>`
     select t.id, t.name, t.wilaya_id as "wilayaCode", w.name_ar as "wilayaName",
       t.municipality as commune, t.description as about, coalesce(t.contact_phone, '') as phone,
+      coalesce(t.contact_email, '') as "contactEmail",
+      coalesce(t.logo_path, '') as logo,
+      coalesce(t.thumbnail_path, '') as thumbnail,
       t.status, p.role
     from profiles p
     join troops t on t.id = p.troop_id
@@ -380,10 +399,13 @@ export const registerTroop = createServerFn({ method: "POST" })
     const troopId = id();
     const rows = await sql<{ id: string }>`
       with new_troop as (
-        insert into troops (id, name, wilaya_id, municipality, description, contact_phone)
+        insert into troops (
+          id, name, wilaya_id, municipality, description, contact_phone, contact_email,
+          logo_path, thumbnail_path
+        )
         values (
           ${troopId}::uuid, ${data.name}, ${data.wilayaCode}, ${data.commune},
-          ${data.about}, ${data.phone}
+          ${data.about}, ${data.phone}, ${data.email}, ${data.logo}, ${data.thumbnail}
         )
         returning id
       )
@@ -409,7 +431,10 @@ export const updateTroop = createServerFn({ method: "POST" })
           wilaya_id = ${data.wilayaCode},
           municipality = ${data.commune},
           description = ${data.about},
-          contact_phone = ${data.phone}
+          contact_phone = ${data.phone},
+          contact_email = ${data.email},
+          logo_path = ${data.logo},
+          thumbnail_path = ${data.thumbnail}
       where id = ${me.troop.id}::uuid
     `;
     return { ok: true as const };
@@ -497,13 +522,13 @@ export const saveProduct = createServerFn({ method: "POST" })
     if (troop.role !== "troop_manager") throw new Error("نشر المنتجات لمسؤول الفوج فقط");
     const price = troopPrice(data.operation, data.salePrice, data.rentPrice);
     if (data.id) {
-      const owned = await sql<{ id: string; status: string }>`
-        select id, status from products
+      const owned = await sql<{ id: string; visibility: string }>`
+        select id, visibility from products
         where id = ${data.id}::uuid and troop_id = ${troop.id}::uuid
       `;
       const row = owned[0];
       if (!row) throw new Error("المنتج غير موجود");
-      if (row.status === "hidden") throw new Error("الإعلان مخفي من الإدارة");
+      if (row.visibility === "hidden") throw new Error("الإعلان مخفي من الإدارة");
       await sql`
         update products set
           title = ${data.title},
@@ -550,7 +575,7 @@ export const setProductStatus = createServerFn({ method: "POST" })
     if (me.troop?.role !== "troop_manager") throw new Error("تعديل المنتجات لمسؤول الفوج فقط");
     const rows = await sql<{ status: string }>`
       update products set status = ${data.status}::product_status
-      where id = ${data.id}::uuid and troop_id = ${me.troop.id}::uuid and status <> 'hidden'
+      where id = ${data.id}::uuid and troop_id = ${me.troop.id}::uuid and visibility <> 'hidden'
       returning status
     `;
     if (!rows[0]) throw new Error("تعذّر تحديث الإعلان");
@@ -804,8 +829,8 @@ export const adminOverview = createServerFn({ method: "GET" })
       join troops t on t.id = s.troop_id
       order by s.created_at desc
     `;
-    const products = await sql<{ id: string; title: string; troopName: string; status: string }>`
-      select p.id, p.title, t.name as "troopName", p.status
+    const products = await sql<{ id: string; title: string; troopName: string; status: string; visibility: string }>`
+      select p.id, p.title, t.name as "troopName", p.status, p.visibility
       from products p join troops t on t.id = p.troop_id
       order by p.created_at desc
     `;
@@ -817,9 +842,11 @@ export const adminOverview = createServerFn({ method: "GET" })
       productId: string;
       productTitle: string;
       productStatus: string;
+      productVisibility: string;
     }>`
       select r.id, r.reason, r.details as note, r.status,
-        p.id as "productId", p.title as "productTitle", p.status as "productStatus"
+        p.id as "productId", p.title as "productTitle", p.status as "productStatus",
+        p.visibility as "productVisibility"
       from reports r join products p on p.id = r.product_id
       order by r.created_at desc
     `;
@@ -893,9 +920,10 @@ export const adminHideProduct = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await requireAdmin(sql, context.userId);
-    const status = data.hidden ? "hidden" : "active";
     const rows = await sql<{ id: string }>`
-      update products set status = ${status}::product_status where id = ${data.id}::uuid returning id
+      update products set visibility = ${data.hidden ? "hidden" : "public"}::product_visibility
+      where id = ${data.id}::uuid
+      returning id
     `;
     if (!rows[0]) throw new Error("المنتج غير موجود");
     return { ok: true as const };

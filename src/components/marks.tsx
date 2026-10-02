@@ -17,15 +17,24 @@ const ICONS: Record<string, LucideIcon> = {
   bags: Backpack,
   uniform: Shirt,
   flags: Flag,
-  camp: Hammer,
+  "camp-tools": Hammer,
   cooking: CookingPot,
   activities: Shapes,
-  aid: BriefcaseMedical,
-  nav: Compass,
+  "first-aid": BriefcaseMedical,
+  navigation: Compass,
+  training: Compass,
   other: Package,
 };
 
-export function CategoryMark({ id, className }: { id: string; className?: string }) {
-  const Icon = ICONS[id] ?? Package;
+export function CategoryMark({
+  id,
+  slug,
+  className,
+}: {
+  id?: string;
+  slug?: string;
+  className?: string;
+}) {
+  const Icon = ICONS[slug ?? ""] ?? ICONS[id ?? ""] ?? Package;
   return <Icon className={className} strokeWidth={1.5} aria-hidden="true" />;
 }

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button, controlClass, Field } from "@/components/ui";
 import { useLocale, useT } from "@/lib/use-locale";
 import { getMeta, registerTroop, updateTroop } from "@/lib/zad/api";
+import { readTroopImage } from "@/lib/zad/image";
 import { troopFieldErrors, troopSchema, type TroopData } from "@/lib/zad/troop";
 import type { Wilaya } from "@/lib/zad/types";
 
@@ -22,6 +23,8 @@ export function TroopForm({
   const [wilayas, setWilayas] = useState<Wilaya[]>([]);
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [logo, setLogo] = useState(initial?.logo ?? "");
+  const [thumbnail, setThumbnail] = useState(initial?.thumbnail ?? "");
 
   useEffect(() => {
     getMeta({ data: { locale } })
@@ -45,6 +48,9 @@ export function TroopForm({
           commune: String(fd.get("commune") ?? ""),
           about: String(fd.get("about") ?? ""),
           phone: String(fd.get("phone") ?? ""),
+          email: String(fd.get("email") ?? ""),
+          logo,
+          thumbnail,
         });
         if (!parsed.success) {
           setErrors(troopFieldErrors(parsed.error));
@@ -105,8 +111,48 @@ export function TroopForm({
         />
       </Field>
       <Field label={t("troop.phone")} error={errors.phone ? t(errors.phone) : undefined}>
-        <input className={controlClass} name="phone" defaultValue={initial?.phone ?? ""} />
+        <input className={controlClass} name="phone" type="tel" autoComplete="tel" defaultValue={initial?.phone ?? ""} />
       </Field>
+      <Field label={t("troop.email")} error={errors.email ? t(errors.email) : undefined}>
+        <input
+          className={controlClass}
+          name="email"
+          type="email"
+          autoComplete="email"
+          defaultValue={initial?.email ?? ""}
+        />
+      </Field>
+      <ImagePick
+        label={t("troop.logo")}
+        hint={t("troop.imageHint")}
+        value={logo}
+        error={errors.logo ? t(errors.logo) : undefined}
+        round
+        onPick={async (file) => {
+          try {
+            setLogo(await readTroopImage(file, 256));
+            setErrors((current) => ({ ...current, logo: "" }));
+          } catch {
+            toast.error(t("troop.errImage"));
+          }
+        }}
+        onClear={() => setLogo("")}
+      />
+      <ImagePick
+        label={t("troop.thumbnail")}
+        hint={t("troop.imageHint")}
+        value={thumbnail}
+        error={errors.thumbnail ? t(errors.thumbnail) : undefined}
+        onPick={async (file) => {
+          try {
+            setThumbnail(await readTroopImage(file, 960));
+            setErrors((current) => ({ ...current, thumbnail: "" }));
+          } catch {
+            toast.error(t("troop.errImage"));
+          }
+        }}
+        onClear={() => setThumbnail("")}
+      />
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? t("auth.pending") : t(mode === "create" ? "troop.create" : "troop.save")}
@@ -118,5 +164,56 @@ export function TroopForm({
         ) : null}
       </div>
     </form>
+  );
+}
+
+function ImagePick({
+  label,
+  hint,
+  value,
+  error,
+  round,
+  onPick,
+  onClear,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  error?: string;
+  round?: boolean;
+  onPick: (file: File) => void;
+  onClear: () => void;
+}) {
+  const t = useT();
+  return (
+    <Field label={label} error={error}>
+      <div className="flex flex-wrap items-center gap-3">
+        <div
+          className={`grid overflow-hidden bg-sand-soft ${round ? "size-20 rounded-full" : "h-24 w-40 rounded-xl"}`}
+        >
+          {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex h-11 cursor-pointer items-center rounded-lg border border-border bg-card px-4 text-sm font-medium">
+            {hint}
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) onPick(file);
+              }}
+            />
+          </label>
+          {value ? (
+            <Button type="button" variant="ghost" onClick={onClear}>
+              {t("troop.removeImage")}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </Field>
   );
 }

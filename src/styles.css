@@ -2,27 +2,49 @@
 
 @theme {
   --font-sans: "Tajawal", "Noto Naskh Arabic", "Segoe UI", sans-serif;
-  --color-bg: #f3f1ec;
-  --color-surface: #f7f5f0;
-  --color-card: #fffcf8;
-  --color-fg: #1c2420;
-  --color-muted: #5c665f;
-  --color-subtle: #7d877f;
-  --color-border: #e3dfd4;
-  --color-accent: #1e4a38;
-  --color-accent-fg: #f4f7f4;
-  --color-accent-soft: #e6eee9;
-  --color-danger: #8c3b32;
-  --color-danger-soft: #f6e8e5;
+
+  --color-bg: #f6f7f4;
+  --color-surface: #faf8f3;
+  --color-card: #ffffff;
+
+  --color-accent: #166534;
+  --color-accent-fg: #ffffff;
+  --color-accent-light: #22c55e;
+  --color-accent-soft: #e6f4ea;
+  --color-forest: #12382c;
+  --color-gold: #f5c518;
+
+  --color-fg: #1f2937;
+  --color-muted: #6b7280;
+  --color-subtle: #9ca3af;
+
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+
+  --color-sand: #d9c39a;
+  --color-sand-soft: #f5efe2;
+
+  --color-success: #16a34a;
+  --color-success-soft: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-info: #2563eb;
+  --color-info-soft: #dbeafe;
+
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
-  --radius-lg: 1.25rem;
-  --radius-xl: 1.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 1.75rem;
 }
 
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
   body {
@@ -31,7 +53,12 @@
     font-family: var(--font-sans);
     line-height: 1.55;
   }
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     text-wrap: balance;
     letter-spacing: -0.02em;
   }
@@ -43,15 +70,36 @@
     cursor: pointer;
   }
   button {
-    transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 150ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 150ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   button:active:not(:disabled) {
     transform: scale(0.98);
   }
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+  }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
   button:active:not(:disabled) {
     transform: none;
   }

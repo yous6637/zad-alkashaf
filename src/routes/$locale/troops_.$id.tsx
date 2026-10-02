@@ -35,10 +35,28 @@ function TroopPage() {
   const { troop, listings } = data;
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">{troop.name}</h1>
-      <p className="mt-1 text-sm text-muted">
-        {troop.wilayaName} · {troop.commune}
-      </p>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="h-44 bg-sand-soft">
+          {troop.thumbnail ? <img src={troop.thumbnail} alt="" className="h-full w-full object-cover" /> : null}
+        </div>
+        <div className="flex items-end gap-4 px-4 pb-4">
+          <div className="-mt-10 size-20 shrink-0 overflow-hidden rounded-full border-4 border-card bg-accent-soft">
+            {troop.logo ? (
+              <img src={troop.logo} alt="" className="size-full object-cover" />
+            ) : (
+              <span className="grid size-full place-items-center text-xl font-semibold text-accent">
+                {troop.name.slice(0, 1)}
+              </span>
+            )}
+          </div>
+          <div className="min-w-0 pb-1">
+            <h1 className="text-3xl font-semibold">{troop.name}</h1>
+            <p className="mt-1 text-sm text-muted">
+              {troop.wilayaName} · {troop.commune}
+            </p>
+          </div>
+        </div>
+      </div>
       {troop.about ? <p className="mt-4 max-w-3xl text-muted">{troop.about}</p> : null}
       <h2 className="mt-8 text-2xl font-semibold">{t("troops.products")}</h2>
       {listings.length ? (

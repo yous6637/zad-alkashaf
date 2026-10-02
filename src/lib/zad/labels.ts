@@ -34,7 +34,6 @@ export const SUB_STATUS = {
 export const LISTING_STATUS = {
   active: "متوفر",
   unavailable: "غير متوفر",
-  hidden: "مخفي",
 } as const;
 
 export function labelOf(

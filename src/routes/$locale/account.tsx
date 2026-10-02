@@ -140,10 +140,17 @@ function AccountPage() {
 
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">{me.troop ? me.troop.name : t("troop.accountTitle")}</h1>
-      <p className="mt-1 text-sm text-muted">
-        {me.name} · {role}
-      </p>
+      <div className="flex items-center gap-3">
+        {me.troop?.logo ? (
+          <img src={me.troop.logo} alt="" className="size-14 rounded-full object-cover" />
+        ) : null}
+        <div>
+          <h1 className="text-3xl font-semibold">{me.troop ? me.troop.name : t("troop.accountTitle")}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {me.name} · {role}
+          </p>
+        </div>
+      </div>
 
       {!me.troop ? (
         <TroopForm mode="create" onDone={() => refresh().catch(() => undefined)} />
@@ -198,6 +205,9 @@ function AccountPage() {
                   commune: me.troop.commune,
                   about: me.troop.about,
                   phone: me.troop.phone || null,
+                  email: me.troop.contactEmail || null,
+                  logo: me.troop.logo || null,
+                  thumbnail: me.troop.thumbnail || null,
                 }}
                 onDone={() => {
                   setEditingProfile(false);
@@ -349,7 +359,6 @@ function GearTable({
   const statusKey = {
     active: "gear.stActive",
     unavailable: "gear.stUnavailable",
-    hidden: "gear.stHidden",
   } as const;
 
   function priceOf(item: Listing) {
@@ -390,16 +399,20 @@ function GearTable({
                 <tr key={item.id} className="border-t border-border">
                   <td className="px-3 py-2">{item.title}</td>
                   <td className="px-3 py-2 tabular-nums">{priceOf(item)}</td>
-                  <td className="px-3 py-2">{t(statusKey[item.status as keyof typeof statusKey] ?? "gear.stHidden")}</td>
+                  <td className="px-3 py-2">
+                    {item.visibility === "hidden"
+                      ? t("gear.stHidden")
+                      : t(statusKey[item.status as keyof typeof statusKey] ?? "gear.stUnavailable")}
+                  </td>
                   {canWrite ? (
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
-                        {item.status !== "hidden" ? (
+                        {item.visibility !== "hidden" ? (
                           <Button type="button" variant="ghost" onClick={() => onEdit(item)}>
                             {t("gear.edit")}
                           </Button>
                         ) : null}
-                        {item.status !== "hidden" ? (
+                        {item.visibility !== "hidden" ? (
                           <Button
                             type="button"
                             variant="ghost"
