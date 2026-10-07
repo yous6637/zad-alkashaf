@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, controlClass, Field } from "@/components/ui";
+import { Button, controlClass, Field } from "@/components/shared/controls";
 import { useLocale, useT } from "@/lib/use-locale";
 import { requestSubscription } from "@/lib/zad/api";
 import { proofErrorKey, proofSchema } from "@/lib/zad/subscription";

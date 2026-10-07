@@ -14,6 +14,7 @@ export type Listing = {
   title: string;
   description: string;
   categoryId: string;
+  categorySlug: string;
   categoryName: string;
   operation: string;
   condition: string;

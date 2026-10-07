@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createFileRoute, Navigate, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Shell } from "@/components/shell";
-import { Button, controlClass, Field } from "@/components/ui";
+import { Shell } from "@/components/layout/shell";
+import { Button, controlClass, Field } from "@/components/shared/controls";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";

@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { NotFoundPage } from "@/components/status-page";
+import { NotFoundPage } from "@/components/layout/status-page";
 import { isLocale, translate } from "@/lib/i18n";
 
 export const Route = createFileRoute("/$locale")({

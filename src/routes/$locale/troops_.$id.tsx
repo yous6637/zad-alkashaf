@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ListingCard } from "@/components/listing-card";
-import { Shell } from "@/components/shell";
+import { ProductCard } from "@/components/products/product-card";
+import { Shell } from "@/components/layout/shell";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";
 import { getTroop } from "@/lib/zad/api";
@@ -62,7 +62,7 @@ function TroopPage() {
       {listings.length ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {listings.map((item) => (
-            <ListingCard key={item.id} item={item} />
+            <ProductCard key={item.id} item={item} />
           ))}
         </div>
       ) : (

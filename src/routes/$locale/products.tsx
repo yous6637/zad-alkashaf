@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { ListingCard } from "@/components/listing-card";
-import { Shell } from "@/components/shell";
-import { Button, controlClass, Field } from "@/components/ui";
+import { ProductCard } from "@/components/products/product-card";
+import { Shell } from "@/components/layout/shell";
+import { Button, controlClass, Field } from "@/components/shared/controls";
 import { useT } from "@/lib/use-locale";
 import { getMeta, listProducts } from "@/lib/zad/api";
 import type { CatalogQuery } from "@/lib/zad/types";
@@ -163,7 +163,7 @@ function ProductsPage() {
       {listings.length ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {listings.map((item) => (
-            <ListingCard key={item.id} item={item} />
+            <ProductCard key={item.id} item={item} />
           ))}
         </div>
       ) : (

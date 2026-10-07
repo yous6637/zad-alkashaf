@@ -1,8 +1,8 @@
 import { createRootRoute, HeadContent, Outlet, Scripts, useRouterState } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
-import { PreviewHostBridge } from "@/components/preview-host-bridge";
-import { Toaster } from "sonner";
-import { ErrorPage, NotFoundPage } from "@/components/status-page";
+import { PreviewHostBridge } from "@/components/layout/preview-host-bridge";
+import { ErrorPage, NotFoundPage } from "@/components/layout/status-page";
+import { Toaster } from "@/components/ui/sonner";
 import { dirFor, isLocale, translate } from "@/lib/i18n";
 import appCss from "../styles.css?url";
 

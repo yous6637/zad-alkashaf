@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { CategoryMark } from "@/components/marks";
-import { Shell } from "@/components/shell";
-import { Button, controlClass, Field, Modal } from "@/components/ui";
+import { ProductVisual } from "@/components/products/product-visual";
+import { Shell } from "@/components/layout/shell";
+import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";
@@ -156,11 +156,8 @@ function ProductBody({
   return (
     <>
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="grid min-h-72 place-items-center rounded-xl border border-border bg-accent-soft text-accent">
-          <div className="text-center">
-            <CategoryMark id={item.categoryId} className="mx-auto size-16" />
-            <p className="mt-3 text-sm">{item.categoryName}</p>
-          </div>
+        <div className="overflow-hidden rounded-2xl ring-1 ring-border">
+          <ProductVisual slug={item.categorySlug} className="min-h-72 w-full" />
         </div>
         <div>
           <p className="text-sm text-muted">{item.createdAt}</p>

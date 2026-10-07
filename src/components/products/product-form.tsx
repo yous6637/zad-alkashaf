@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, controlClass, Field, Modal } from "@/components/ui";
+import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
 import { useT } from "@/lib/use-locale";
 import { saveProduct } from "@/lib/zad/api";
 import { parseMoney, productFieldErrors, productSchema } from "@/lib/zad/product";

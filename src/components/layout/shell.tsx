@@ -69,7 +69,7 @@ export function Shell({ children, flush = false }: { children: ReactNode; flush?
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 border-b border-border bg-card">
+      <header className="sticky top-0 z-30 border-b border-border/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3">
           <Link to="/$locale" params={{ locale }} className="flex items-center gap-2">
             <Tent className="size-9 text-accent" strokeWidth={1.75} aria-hidden="true" />

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Shell } from "@/components/shell";
+import { Shell } from "@/components/layout/shell";
 import { useLocale, useT } from "@/lib/use-locale";
 
 export function NotFoundPage() {

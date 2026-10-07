@@ -49,6 +49,7 @@ function listingSelect(locale: "ar" | "fr" = "ar") {
   p.title,
   p.description,
   p.category_id as "categoryId",
+  c.slug as "categorySlug",
   c.${name} as "categoryName",
   p.listing_type as operation,
   p.condition,
