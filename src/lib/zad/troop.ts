@@ -6,24 +6,34 @@ const imageField = z
   .refine((value) => value.length === 0 || /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(value))
   .transform((value) => (value.length === 0 ? null : value));
 
+function blank(value: unknown) {
+  return value == null ? "" : value;
+}
+
 export const troopSchema = z.object({
   name: z.string().trim().min(2).max(80),
   wilayaCode: z.number().int().min(1).max(58),
   commune: z.string().trim().min(2).max(80),
   about: z.string().trim().min(4).max(600),
-  phone: z
-    .string()
-    .trim()
-    .max(30)
-    .transform((value) => (value.length > 0 ? value : null)),
-  email: z
-    .string()
-    .trim()
-    .max(160)
-    .refine((value) => value.length === 0 || z.email().safeParse(value).success)
-    .transform((value) => (value.length === 0 ? null : value)),
-  logo: imageField,
-  thumbnail: imageField,
+  phone: z.preprocess(
+    blank,
+    z
+      .string()
+      .trim()
+      .max(30)
+      .transform((value) => (value.length > 0 ? value : null)),
+  ),
+  email: z.preprocess(
+    blank,
+    z
+      .string()
+      .trim()
+      .max(160)
+      .refine((value) => value.length === 0 || z.email().safeParse(value).success)
+      .transform((value) => (value.length === 0 ? null : value)),
+  ),
+  logo: z.preprocess(blank, imageField),
+  thumbnail: z.preprocess(blank, imageField),
 });
 
 export type TroopInput = z.input<typeof troopSchema>;

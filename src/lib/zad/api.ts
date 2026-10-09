@@ -173,8 +173,10 @@ export const getProduct = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     const locale = data.locale === "fr" ? "fr" : "ar";
-    const rows = await sql.query<Listing>(
-      `select ${listingSelect(locale)}
+    const rows = await sql.query<Listing & { logo: string | null; commune: string }>(
+      `select ${listingSelect(locale)},
+              t.logo_path as logo,
+              t.municipality as commune
        from products p
        join troops t on t.id = p.troop_id
        join categories c on c.id = p.category_id
@@ -182,7 +184,25 @@ export const getProduct = createServerFn({ method: "GET" })
        where p.id = $1::uuid and ${visibleListing}`,
       [data.id],
     );
-    return rows[0] ?? null;
+    const item = rows[0];
+    if (!item) return null;
+    const related = await sql.query<Listing>(
+      `select ${listingSelect(locale)}
+       from products p
+       join troops t on t.id = p.troop_id
+       join categories c on c.id = p.category_id
+       join wilayas w on w.id = p.wilaya_id
+       where p.troop_id = $1::uuid and p.id <> $2::uuid and ${visibleListing}
+       order by p.created_at desc
+       limit 4`,
+      [item.troopId, item.id],
+    );
+    return {
+      item,
+      logo: item.logo,
+      commune: item.commune,
+      related,
+    };
   });
 
 export const listTroops = createServerFn({ method: "GET" })
@@ -337,6 +357,13 @@ async function loadMe(sql: Sql, userId: string): Promise<Me> {
     `;
     counts = { members: memberCount[0]?.n ?? 0, products: productCount[0]?.n ?? 0 };
   }
+  const requests = await sql<{ id: string; troopId: string; troopName: string }>`
+    select r.id, r.troop_id as "troopId", t.name as "troopName"
+    from join_requests r
+    join troops t on t.id = r.troop_id
+    where r.user_id = ${userId} and r.status = 'pending'
+    limit 1
+  `;
   return {
     userId,
     name: user.name,
@@ -347,6 +374,7 @@ async function loadMe(sql: Sql, userId: string): Promise<Me> {
     subscription,
     pendingProof,
     counts,
+    joinRequest: requests[0] ?? null,
     notifications: [],
   };
 }
@@ -398,6 +426,11 @@ export const registerTroop = createServerFn({ method: "POST" })
     `;
     if (existing[0]) throw new Error("أنت عضو في فوج بالفعل");
     const troopId = id();
+    await sql`
+      update join_requests
+      set status = 'rejected', handled_at = now()
+      where user_id = ${context.userId} and status = 'pending'
+    `;
     const rows = await sql<{ id: string }>`
       with new_troop as (
         insert into troops (
@@ -417,6 +450,117 @@ export const registerTroop = createServerFn({ method: "POST" })
     `;
     if (!rows[0]) throw new Error("تعذّر تسجيل الفوج");
     return { troopId };
+  });
+
+export const joinTroop = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) => parse(z.object({ troopId: z.string().uuid() }), data))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await ensureProfile(sql, context.userId);
+    const existing = await sql<{ id: string }>`
+      select id from profiles where id = ${context.userId} and troop_id is not null limit 1
+    `;
+    if (existing[0]) throw new Error("أنت عضو في فوج بالفعل");
+    const pending = await sql<{ id: string; troopId: string }>`
+      select id, troop_id as "troopId"
+      from join_requests
+      where user_id = ${context.userId} and status = 'pending'
+      limit 1
+    `;
+    if (pending[0]?.troopId === data.troopId) throw new Error("طلبك قيد مراجعة مدير الفوج");
+    if (pending[0]) throw new Error("لديك طلب انضمام قيد المراجعة");
+    const troops = await sql<{ id: string }>`
+      select id from troops where id = ${data.troopId}::uuid and status = 'active' limit 1
+    `;
+    if (!troops[0]) throw new Error("الفوج غير متاح للانضمام");
+    try {
+      await sql`
+        insert into join_requests (troop_id, user_id)
+        values (${data.troopId}::uuid, ${context.userId})
+      `;
+    } catch (error) {
+      dbError(error);
+    }
+    return { ok: true as const };
+  });
+
+export const cancelJoinRequest = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: string }>`
+      update join_requests
+      set status = 'rejected', handled_at = now()
+      where user_id = ${context.userId} and status = 'pending'
+      returning id
+    `;
+    if (!rows[0]) throw new Error("لا يوجد طلب قيد المراجعة");
+    return { ok: true as const };
+  });
+
+export const listJoinRequests = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const me = await requireManager(sql, context.userId);
+    if (me.troop.role !== "troop_manager") throw new Error("طلبات الانضمام لمدير الفوج فقط");
+    return sql<{ id: string; name: string; email: string }>`
+      select r.id, u.name, u.email
+      from join_requests r
+      join "user" u on u.id = r.user_id
+      where r.troop_id = ${me.troop.id}::uuid and r.status = 'pending'
+      order by r.created_at
+    `;
+  });
+
+export const decideJoinRequest = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) =>
+    parse(z.object({ id: z.string().uuid(), accept: z.boolean() }), data),
+  )
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await requireManager(sql, context.userId);
+    if (me.troop.role !== "troop_manager") throw new Error("القبول لمدير الفوج فقط");
+    const requests = await sql<{ id: string; userId: string }>`
+      select id, user_id as "userId"
+      from join_requests
+      where id = ${data.id}::uuid
+        and troop_id = ${me.troop.id}::uuid
+        and status = 'pending'
+      limit 1
+    `;
+    const request = requests[0];
+    if (!request) throw new Error("الطلب غير موجود");
+    if (!data.accept) {
+      await sql`
+        update join_requests
+        set status = 'rejected', handled_by = ${context.userId}, handled_at = now()
+        where id = ${request.id}::uuid and status = 'pending'
+      `;
+      return { ok: true as const };
+    }
+    if (me.troop.status !== "active" || !subIsLive(me.subscription)) {
+      throw new Error("قبول الأعضاء يحتاج اشتراكاً فعّالاً");
+    }
+    try {
+      const linked = await sql<{ id: string }>`
+        update profiles
+        set troop_id = ${me.troop.id}::uuid, role = 'member'
+        where id = ${request.userId} and troop_id is null
+        returning id
+      `;
+      if (!linked[0]) throw new Error("هذا الحساب مرتبط بفوج آخر");
+      await sql`
+        update join_requests
+        set status = 'accepted', handled_by = ${context.userId}, handled_at = now()
+        where id = ${request.id}::uuid
+      `;
+    } catch (error) {
+      dbError(error);
+    }
+    return { ok: true as const };
   });
 
 export const updateTroop = createServerFn({ method: "POST" })
@@ -791,9 +935,16 @@ export const adminOverview = createServerFn({ method: "GET" })
             wilayaName: string;
             status: string;
             members: number;
+            pendingSubId: string | null;
           }>`
             select t.id, t.name, w.name_fr as "wilayaName", t.status,
-              (select count(*)::int from profiles m where m.troop_id = t.id and m.is_active) as members
+              (select count(*)::int from profiles m where m.troop_id = t.id and m.is_active) as members,
+              (
+                select s.id from subscriptions s
+                where s.troop_id = t.id and s.status = 'pending'
+                order by s.created_at desc
+                limit 1
+              ) as "pendingSubId"
             from troops t
             join wilayas w on w.id = t.wilaya_id
             order by t.created_at desc
@@ -804,9 +955,16 @@ export const adminOverview = createServerFn({ method: "GET" })
             wilayaName: string;
             status: string;
             members: number;
+            pendingSubId: string | null;
           }>`
             select t.id, t.name, w.name_ar as "wilayaName", t.status,
-              (select count(*)::int from profiles m where m.troop_id = t.id and m.is_active) as members
+              (select count(*)::int from profiles m where m.troop_id = t.id and m.is_active) as members,
+              (
+                select s.id from subscriptions s
+                where s.troop_id = t.id and s.status = 'pending'
+                order by s.created_at desc
+                limit 1
+              ) as "pendingSubId"
             from troops t
             join wilayas w on w.id = t.wilaya_id
             order by t.created_at desc

@@ -12,19 +12,24 @@ import { useLocale, useT } from "@/lib/use-locale";
 import { memberEmailSchema } from "@/lib/zad/member";
 import {
   addMember,
+  cancelJoinRequest,
   claimAdmin,
+  decideJoinRequest,
   deleteProduct,
   getCurrentUser,
   getMe,
   getMeta,
+  joinTroop,
   listInbox,
+  listJoinRequests,
   listMembers,
   listOwnProducts,
+  listTroops,
   markNotificationsRead,
   removeMember,
   setProductStatus,
 } from "@/lib/zad/api";
-import type { Category, Listing, Me, Plan, Wilaya } from "@/lib/zad/types";
+import type { Category, Listing, Me, Plan, TroopCard, Wilaya } from "@/lib/zad/types";
 
 export const Route = createFileRoute("/$locale/account")({
   beforeLoad: async ({ params }) => {
@@ -54,6 +59,7 @@ function AccountPage() {
   const [tab, setTab] = useState<"gear" | "members" | "inbox" | "notes">("gear");
   const [products, setProducts] = useState<Listing[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [requests, setRequests] = useState<Member[]>([]);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [meta, setMeta] = useState<{ categories: Category[]; wilayas: Wilaya[]; plan: Plan | null }>({
     categories: [],
@@ -62,24 +68,32 @@ function AccountPage() {
   });
   const [editing, setEditing] = useState<Listing | null | "new">(null);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [path, setPath] = useState<"create" | "join" | null>(null);
   const t = useT();
   const localeCode = useLocale();
 
   async function refresh() {
     const next = await getMe();
     setMe(next);
-    if (next.troop) {
-      const [gear, people, mail, base] = await Promise.all([
+    if (!next.troop || next.troop.role !== "troop_manager") {
+      setProducts([]);
+      setMembers([]);
+      setRequests([]);
+      setInbox([]);
+      return;
+    }
+      const [gear, people, mail, base, asks] = await Promise.all([
         listOwnProducts(),
         listMembers(),
         listInbox(),
         getMeta({ data: { locale: account } }),
+        listJoinRequests(),
       ]);
       setProducts(gear);
       setMembers(people);
       setInbox(mail);
       setMeta(base);
-    }
+      setRequests(asks.map((ask) => ({ ...ask, role: "member" })));
   }
 
   useEffect(() => {
@@ -153,7 +167,69 @@ function AccountPage() {
       </div>
 
       {!me.troop ? (
-        <TroopForm mode="create" onDone={() => refresh().catch(() => undefined)} />
+        path === "create" ? (
+          <div className="mt-6">
+            <Button type="button" variant="ghost" onClick={() => setPath(null)}>
+              {t("troop.back")}
+            </Button>
+            <TroopForm mode="create" onDone={() => refresh().catch(() => undefined)} />
+          </div>
+        ) : path === "join" ? (
+          <div className="mt-6">
+            <Button type="button" variant="ghost" onClick={() => setPath(null)}>
+              {t("troop.back")}
+            </Button>
+            <JoinTroop
+              locale={account}
+              pendingTroopId={me.joinRequest?.troopId ?? null}
+              onDone={() => {
+                setPath(null);
+                refresh().catch(() => undefined);
+              }}
+            />
+          </div>
+        ) : (
+          <div className="mt-6">
+            {me.joinRequest ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 text-sm">
+                <p>{t("troop.joinPending", { troop: me.joinRequest.troopName })}</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() =>
+                    cancelJoinRequest()
+                      .then(() => {
+                        toast.success(t("troop.requestCancelled"));
+                        refresh().catch(() => undefined);
+                      })
+                      .catch((error) => toast.error(error instanceof Error ? error.message : t("troop.joinFailed")))
+                  }
+                >
+                  {t("troop.cancelRequest")}
+                </Button>
+              </div>
+            ) : null}
+            <p className="text-sm text-muted">{t("troop.chooseLead")}</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                className="rounded-xl border border-border bg-card p-4 text-start"
+                onClick={() => setPath("create")}
+              >
+                <span className="block text-lg font-semibold">{t("troop.chooseCreate")}</span>
+                <span className="mt-1 block text-sm text-muted">{t("troop.chooseCreateLead")}</span>
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-border bg-card p-4 text-start"
+                onClick={() => setPath("join")}
+              >
+                <span className="block text-lg font-semibold">{t("troop.chooseJoin")}</span>
+                <span className="mt-1 block text-sm text-muted">{t("troop.chooseJoinLead")}</span>
+              </button>
+            </div>
+          </div>
+        )
       ) : (
         <>
           {me.troop.status === "pending" ? (
@@ -276,9 +352,13 @@ function AccountPage() {
               </button>
             ))}
             {tab === "gear" && live && manager && me.counts.products < (me.subscription?.maxProducts ?? 0) ? (
-              <Button type="button" className="ms-auto" onClick={() => setEditing("new")}>
+              <Link
+                to="/$locale/account/product"
+                params={{ locale: account }}
+                className="ms-auto inline-flex h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg"
+              >
                 {t("troop.addProduct")}
-              </Button>
+              </Link>
             ) : null}
           </div>
 
@@ -297,6 +377,7 @@ function AccountPage() {
             {tab === "members" ? (
               <Members
                 members={members}
+                requests={requests}
                 canManage={manager && live}
                 selfId={me.userId}
                 used={me.counts.members}
@@ -323,6 +404,89 @@ function AccountPage() {
         </>
       )}
     </Shell>
+  );
+}
+
+function JoinTroop({
+  locale,
+  pendingTroopId,
+  onDone,
+}: {
+  locale: "ar" | "fr";
+  pendingTroopId: string | null;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const [troops, setTroops] = useState<TroopCard[]>([]);
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+
+  useEffect(() => {
+    listTroops({ data: { locale } })
+      .then(setTroops)
+      .catch(() => toast.error(t("troop.joinFailed")));
+  }, [locale, t]);
+
+  const needle = query.trim();
+  const shown = troops.filter((troop) =>
+    needle ? `${troop.name} ${troop.wilayaName} ${troop.commune}`.includes(needle) : true,
+  );
+
+  return (
+    <div className="mt-4 space-y-3">
+      <h2 className="text-xl font-semibold">{t("troop.chooseJoin")}</h2>
+      <p className="text-sm text-muted">{t("troop.chooseJoinLead")}</p>
+      <input
+        className={controlClass}
+        value={query}
+        placeholder={t("troop.joinSearch")}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {shown.length ? (
+        <ul className="space-y-2">
+          {shown.map((troop) => (
+            <li
+              key={troop.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                {troop.logo ? (
+                  <img src={troop.logo} alt="" className="size-11 shrink-0 rounded-full object-cover" />
+                ) : null}
+                <div className="min-w-0">
+                  <p className="font-medium">{troop.name}</p>
+                  <p className="text-sm text-muted">
+                    {troop.wilayaName} · {troop.commune}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                disabled={pending !== null || pendingTroopId !== null}
+                onClick={() => {
+                  setPending(troop.id);
+                  joinTroop({ data: { troopId: troop.id } })
+                    .then(() => {
+                      toast.success(t("troop.joined"));
+                      onDone();
+                    })
+                    .catch((error) => toast.error(error instanceof Error ? error.message : t("troop.joinFailed")))
+                    .finally(() => setPending(null));
+                }}
+              >
+                {pending === troop.id
+                  ? t("auth.pending")
+                  : pendingTroopId === troop.id
+                    ? t("troop.joinWaiting")
+                    : t("troop.joinAction")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted">{t("troop.joinEmpty")}</p>
+      )}
+    </div>
   );
 }
 
@@ -462,6 +626,7 @@ function GearTable({
 
 function Members({
   members,
+  requests,
   canManage,
   selfId,
   used,
@@ -469,6 +634,7 @@ function Members({
   onChanged,
 }: {
   members: Member[];
+  requests: Member[];
   canManage: boolean;
   selfId: string;
   used: number;
@@ -482,6 +648,60 @@ function Members({
 
   return (
     <div className="space-y-4">
+      {canManage || requests.length ? (
+      <div>
+        <h2 className="text-lg font-semibold">{t("members.requests")}</h2>
+        {requests.length ? (
+          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-card">
+            {requests.map((request) => (
+              <li key={request.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <span>
+                  <span className="font-medium">{request.name}</span>
+                  <span className="mt-0.5 block text-muted">{request.email}</span>
+                </span>
+                <span className="flex gap-2">
+                  <Button
+                    type="button"
+                    disabled={pending || !canManage}
+                    onClick={() => {
+                      setPending(true);
+                      decideJoinRequest({ data: { id: request.id, accept: true } })
+                        .then(() => {
+                          toast.success(t("members.accepted"));
+                          onChanged();
+                        })
+                        .catch((caught) => toast.error(caught instanceof Error ? caught.message : t("members.addFailed")))
+                        .finally(() => setPending(false));
+                    }}
+                  >
+                    {t("members.accept")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => {
+                      setPending(true);
+                      decideJoinRequest({ data: { id: request.id, accept: false } })
+                        .then(() => {
+                          toast.success(t("members.rejected"));
+                          onChanged();
+                        })
+                        .catch((caught) => toast.error(caught instanceof Error ? caught.message : t("members.removeFailed")))
+                        .finally(() => setPending(false));
+                    }}
+                  >
+                    {t("members.reject")}
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">{t("members.noRequests")}</p>
+        )}
+      </div>
+      ) : null}
       {members.length ? (
         <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {members.map((member) => (

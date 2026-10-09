@@ -1,9 +1,24 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { createFileRoute, Navigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, redirect } from "@tanstack/react-router";
+import {
+  Box,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Flag,
+  LayoutDashboard,
+  Package,
+  RefreshCw,
+  Search,
+  Settings,
+  Tent,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Shell } from "@/components/layout/shell";
 import { Button, controlClass, Field } from "@/components/shared/controls";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";
 import {
@@ -47,6 +62,9 @@ function AdminPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [data, setData] = useState<Overview | null>(null);
   const [tab, setTab] = useState<"troops" | "subs" | "products" | "reports" | "plan">("troops");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
 
   function load() {
     return adminOverview({ data: { locale: account } }).then(setData);
@@ -56,16 +74,16 @@ function AdminPage() {
     if (!user) return;
     let cancel = false;
     getMe()
-      .then((me) => {
+      .then(async (me) => {
         if (cancel) return;
         if (me.platformRole !== "admin") {
           setAllowed(false);
           return;
         }
+        const next = await adminOverview({ data: { locale: account } });
+        if (cancel) return;
+        setData(next);
         setAllowed(true);
-        return adminOverview({ data: { locale: account } }).then((next) => {
-          if (!cancel) setData(next);
-        });
       })
       .catch(() => {
         if (!cancel) setAllowed(false);
@@ -76,14 +94,13 @@ function AdminPage() {
   }, [user, account]);
 
   if (isPending || (user && allowed === null)) {
-    return (
-      <Shell>
-        <div className="h-40 animate-pulse rounded-xl bg-surface" />
-      </Shell>
-    );
+    return <div className="h-screen animate-pulse bg-[#f4f7f5]" />;
   }
   if (!user) return <Navigate to="/$locale/login" params={{ locale: account }} />;
-  if (!allowed || !data) return <Navigate to="/$locale" params={{ locale: account }} />;
+  if (allowed === false) return <Navigate to="/$locale" params={{ locale: account }} />;
+  if (!data) {
+    return <div className="h-screen animate-pulse bg-[#f4f7f5]" />;
+  }
 
   function run(work: Promise<unknown>) {
     work.then(() => load()).catch((error) => toast.error(error instanceof Error ? error.message : t("admin.failed")));
@@ -112,135 +129,95 @@ function AdminPage() {
     other: "product.reasonOther",
   } as const;
   const money = new Intl.NumberFormat(account === "ar" ? "ar-DZ" : "fr-DZ", { maximumFractionDigits: 0 });
+  const now = new Date();
+  const dateLocale = account === "ar" ? "ar-DZ" : "fr-DZ";
+  const dateLabel = new Intl.DateTimeFormat(dateLocale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(now);
+  const timeLabel = new Intl.DateTimeFormat(dateLocale, { hour: "2-digit", minute: "2-digit" }).format(now);
+  const needle = query.trim();
+  const pendingTroops = data.troops.filter((troop) => troop.status === "pending").length;
+  const activeTroops = data.troops.filter((troop) => troop.status === "active").length;
+  const openReports = data.reports.filter((report) => report.status === "open").length;
 
-  return (
-    <Shell>
-      <h1 className="text-3xl font-semibold">{t("admin.title")}</h1>
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <Stat label={t("admin.statTroops")} value={String(data.troops.length)} />
-        <Stat label={t("admin.statSubs")} value={String(data.subs.length)} />
-        <Stat label={t("admin.statProducts")} value={String(data.products.length)} />
-        <Stat
-          label={t("admin.statReports")}
-          value={String(data.reports.filter((report) => report.status === "open").length)}
-        />
-      </div>
-      <div className="mt-6 flex flex-wrap gap-2">
-        {(
-          [
-            ["troops", "admin.tabTroops"],
-            ["subs", "admin.tabSubs"],
-            ["products", "admin.tabProducts"],
-            ["reports", "admin.tabReports"],
-            ["plan", "admin.tabPlan"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`h-11 rounded-md px-3 text-sm ${tab === key ? "bg-accent text-accent-fg" : "border border-border bg-card"}`}
-            onClick={() => setTab(key)}
-          >
-            {t(label)}
-          </button>
-        ))}
-      </div>
-      <div className="mt-4">
-        {tab === "troops" ? (
-          data.troops.length ? (
-            <Rows
-              rows={data.troops.map((troop) => [
-                troop.name,
-                troop.wilayaName,
-                t(troopStatus[troop.status as keyof typeof troopStatus] ?? "troop.statusPending"),
-                String(troop.members),
-                <span key={troop.id} className="flex gap-2">
-                  <Button type="button" onClick={() => run(adminSetTroopStatus({ data: { id: troop.id, status: "active" } }))}>
-                    {t("admin.accept")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    onClick={() => run(adminSetTroopStatus({ data: { id: troop.id, status: "suspended" } }))}
-                  >
-                    {t("admin.suspend")}
-                  </Button>
-                </span>,
-              ])}
-            />
-          ) : (
-            <p className="text-sm text-muted">{t("admin.emptyTroops")}</p>
-          )
-        ) : null}
-        {tab === "subs" ? (
-          data.subs.length ? (
-            <div className="space-y-3">
-              {data.subs.map((sub) => (
-                <article key={sub.id} className="rounded-lg border border-border bg-card p-4 text-sm">
-                  <p className="font-medium">
-                    {sub.troopName} · {t(subStatus[sub.status as keyof typeof subStatus] ?? "sub.statusPending")}
-                  </p>
-                  <p className="mt-1 tabular-nums text-muted">
-                    {t("sub.price", { amount: money.format(Number(sub.price)) })}
-                    {" · "}
-                    {t("admin.limits", { members: sub.maxMembers, products: sub.maxProducts })}
-                    {sub.endsOn ? ` · ${t("admin.until", { date: sub.endsOn })}` : ""}
-                  </p>
-                  <p className="mt-2">{sub.proof}</p>
-                  {sub.status !== "active" ? (
-                    <Button type="button" className="mt-3" onClick={() => run(adminActivateSubscription({ data: { id: sub.id } }))}>
-                      {t("admin.activate")}
-                    </Button>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">{t("admin.emptySubs")}</p>
-          )
-        ) : null}
-        {tab === "products" ? (
-          data.products.length ? (
-            <Rows
-              rows={data.products.map((product) => [
+  const rows: { id: string; cells: ReactNode[]; action: ReactNode }[] =
+    tab === "subs"
+      ? data.subs
+          .filter((sub) => (!needle || sub.troopName.includes(needle)) && (status === "all" || sub.status === status))
+          .map((sub) => ({
+            id: sub.id,
+            cells: [
+              <span key="name">
+                <span className="block font-medium">{sub.troopName}</span>
+                {sub.proof ? <span className="mt-0.5 block text-xs text-muted">{sub.proof}</span> : null}
+              </span>,
+              t("sub.price", { amount: money.format(Number(sub.price)) }),
+              t("admin.limits", { members: sub.maxMembers, products: sub.maxProducts }),
+              <Badge key="s" tone={toneFor(sub.status)}>
+                {t(subStatus[sub.status as keyof typeof subStatus] ?? "sub.statusPending")}
+              </Badge>,
+            ],
+            action:
+              sub.status !== "active" ? (
+                <Button type="button" onClick={() => run(adminActivateSubscription({ data: { id: sub.id } }))}>
+                  {t("admin.activate")}
+                </Button>
+              ) : (
+                <span className="text-sm text-muted">{sub.endsOn ? t("admin.until", { date: sub.endsOn }) : ""}</span>
+              ),
+          }))
+      : tab === "products"
+        ? data.products
+            .filter(
+              (product) =>
+                (!needle || `${product.title} ${product.troopName}`.includes(needle)) &&
+                (status === "all" ||
+                  (status === "hidden" ? product.visibility === "hidden" : product.status === status && product.visibility !== "hidden")),
+            )
+            .map((product) => ({
+              id: product.id,
+              cells: [
                 product.title,
                 product.troopName,
-                t(product.visibility === "hidden" ? "gear.stHidden" : (productStatus[product.status as keyof typeof productStatus] ?? "gear.stUnavailable")),
+                <Badge key="p" tone={product.visibility === "hidden" ? "rose" : toneFor(product.status)}>
+                  {t(
+                    product.visibility === "hidden"
+                      ? "gear.stHidden"
+                      : (productStatus[product.status as keyof typeof productStatus] ?? "gear.stUnavailable"),
+                  )}
+                </Badge>,
+              ],
+              action: (
                 <Button
-                  key={product.id}
                   type="button"
                   variant="ghost"
                   onClick={() => run(adminHideProduct({ data: { id: product.id, hidden: product.visibility !== "hidden" } }))}
                 >
                   {product.visibility === "hidden" ? t("admin.show") : t("admin.hide")}
-                </Button>,
-              ])}
-            />
-          ) : (
-            <p className="text-sm text-muted">{t("admin.emptyProducts")}</p>
-          )
-        ) : null}
-        {tab === "reports" ? (
-          data.reports.length ? (
-            <div className="space-y-3">
-              {data.reports.map((report) => (
-                <article key={report.id} className="rounded-lg border border-border bg-card p-4 text-sm">
-                  <p className="font-medium">
-                    {t(reasonKey[report.reason as keyof typeof reasonKey] ?? "product.reasonOther")}
-                    {" · "}
+                </Button>
+              ),
+            }))
+        : tab === "reports"
+          ? data.reports
+              .filter(
+                (report) =>
+                  (!needle || `${report.productTitle} ${report.note}`.includes(needle)) &&
+                  (status === "all" || report.status === status),
+              )
+              .map((report) => ({
+                id: report.id,
+                cells: [
+                  report.productTitle,
+                  t(reasonKey[report.reason as keyof typeof reasonKey] ?? "product.reasonOther"),
+                  <Badge key="r" tone={report.status === "open" ? "blue" : "green"}>
                     {report.status === "open" ? t("admin.open") : t("admin.resolved")}
-                  </p>
-                  <p className="text-muted">
-                    {report.productTitle}
-                    {" · "}
-                    {t(
-                      report.productVisibility === "hidden"
-                        ? "gear.stHidden"
-                        : (productStatus[report.productStatus as keyof typeof productStatus] ?? "gear.stUnavailable"),
-                    )}
-                  </p>
-                  {report.note ? <p className="mt-2">{report.note}</p> : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  </Badge>,
+                ],
+                action: (
+                  <span className="flex gap-2">
                     {report.productVisibility !== "hidden" ? (
                       <Button
                         type="button"
@@ -255,45 +232,373 @@ function AdminPage() {
                         {t("admin.resolve")}
                       </Button>
                     ) : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">{t("admin.emptyReports")}</p>
-          )
-        ) : null}
-        {tab === "plan" && data.plan ? <PlanForm plan={data.plan} onDone={() => load().catch(() => undefined)} /> : null}
-      </div>
-    </Shell>
-  );
-}
+                  </span>
+                ),
+              }))
+          : data.troops
+              .filter(
+                (troop) =>
+                  (!needle || `${troop.name} ${troop.wilayaName}`.includes(needle)) &&
+                  (status === "all" || troop.status === status),
+              )
+              .map((troop) => ({
+                id: troop.id,
+                cells: [
+                  troop.name,
+                  troop.wilayaName,
+                  String(troop.members),
+                  <Badge key="t" tone={toneFor(troop.status)}>
+                    {t(troopStatus[troop.status as keyof typeof troopStatus] ?? "troop.statusPending")}
+                  </Badge>,
+                ],
+                action: (
+                  <span className="flex gap-2">
+                    {troop.status === "pending" || troop.pendingSubId ? (
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          run(
+                            (async () => {
+                              if (troop.status !== "active") {
+                                await adminSetTroopStatus({ data: { id: troop.id, status: "active" } });
+                              }
+                              if (troop.pendingSubId) {
+                                await adminActivateSubscription({ data: { id: troop.pendingSubId } });
+                              }
+                              toast.success(t("admin.accepted"));
+                            })(),
+                          )
+                        }
+                      >
+                        {t("admin.accept")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => run(adminSetTroopStatus({ data: { id: troop.id, status: "suspended" } }))}
+                    >
+                      {t("admin.suspend")}
+                    </Button>
+                  </span>
+                ),
+              }));
 
-function Stat({ label, value }: { label: string; value: string }) {
+  const pageCount = Math.max(1, Math.ceil(rows.length / 8));
+  const safePage = Math.min(page, pageCount);
+  const visible = rows.slice((safePage - 1) * 8, safePage * 8);
+  const headers =
+    tab === "subs"
+      ? [t("admin.colTroop"), t("admin.colPrice"), t("admin.colLimits"), t("admin.colStatus"), t("admin.colActions")]
+      : tab === "products"
+        ? [t("admin.colProduct"), t("admin.colTroop"), t("admin.colStatus"), t("admin.colActions")]
+        : tab === "reports"
+          ? [t("admin.colProduct"), t("admin.tabReports"), t("admin.colStatus"), t("admin.colActions")]
+          : [t("admin.colTroop"), t("admin.colWilaya"), t("admin.colMembers"), t("admin.colStatus"), t("admin.colActions")];
+  const listTitle =
+    tab === "subs"
+      ? t("admin.tabSubs")
+      : tab === "products"
+        ? t("admin.tabProducts")
+        : tab === "reports"
+          ? t("admin.tabReports")
+          : t("admin.tabTroops");
+  const statusOptions =
+    tab === "subs"
+      ? ["all", "pending", "active", "expired", "suspended"]
+      : tab === "products"
+        ? ["all", "active", "unavailable", "hidden"]
+        : tab === "reports"
+          ? ["all", "open", "resolved"]
+          : ["all", "pending", "active", "suspended"];
+  const statusLabel = (value: string) => {
+    if (value === "all") return t("admin.filterAll");
+    if (value === "open") return t("admin.open");
+    if (value === "resolved") return t("admin.resolved");
+    if (value === "hidden") return t("gear.stHidden");
+    if (value in productStatus && tab === "products") return t(productStatus[value as keyof typeof productStatus]);
+    if (value in subStatus && tab === "subs") return t(subStatus[value as keyof typeof subStatus]);
+    if (value in troopStatus) return t(troopStatus[value as keyof typeof troopStatus]);
+    return value;
+  };
+  const empty =
+    tab === "subs"
+      ? t("admin.emptySubs")
+      : tab === "products"
+        ? t("admin.emptyProducts")
+        : tab === "reports"
+          ? t("admin.emptyReports")
+          : t("admin.emptyTroops");
+
+  function choose(next: typeof tab) {
+    setTab(next);
+    setQuery("");
+    setStatus("all");
+    setPage(1);
+  }
+
+  const nav = [
+    ["troops", "admin.title", LayoutDashboard],
+    ["subs", "admin.tabSubs", Users],
+    ["products", "admin.tabProducts", Package],
+    ["reports", "admin.tabReports", Flag],
+    ["plan", "admin.tabPlan", Settings],
+  ] as const;
+
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+    <div className="flex min-h-screen bg-[#f4f7f5] text-fg">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-[#0f3d2e] px-4 py-5 text-white lg:flex">
+        <Link to="/$locale" params={{ locale: account }} className="flex items-center gap-2 px-2">
+          <Tent className="size-8" strokeWidth={1.75} aria-hidden="true" />
+          <span>
+            <span className="block text-base font-bold">{t("brand.name")}</span>
+            <span className="block text-xs text-white/70">Zad Al-Kashaf</span>
+          </span>
+        </Link>
+        <nav className="mt-8 space-y-1">
+          {nav.map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              className={cn(
+                "flex h-11 w-full items-center gap-2 rounded-xl px-3 text-sm",
+                tab === key ? "bg-[#1f8a4d] text-white" : "text-white/80",
+              )}
+              onClick={() => choose(key)}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {t(label)}
+            </button>
+          ))}
+        </nav>
+      </aside>
+      <div className="min-w-0 flex-1">
+        <header className="flex items-center gap-3 border-b border-border/70 bg-white px-4 py-3">
+          <label className="relative ms-auto hidden max-w-md flex-1 sm:block">
+            <Search className="pointer-events-none absolute inset-y-0 end-3 my-auto size-4 text-muted" aria-hidden="true" />
+            <input
+              className="h-11 w-full rounded-full border border-border bg-[#f7f8f6] pe-10 ps-4 text-sm"
+              value={query}
+              placeholder={t("admin.search")}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="flex size-9 items-center justify-center rounded-full bg-[#e7f6ee] text-[#167944]">
+              <Users className="size-4" aria-hidden="true" />
+            </span>
+            <span className="text-sm font-medium">{t("admin.hello", { name: user.displayName ?? t("nav.admin") })}</span>
+            <button
+              type="button"
+              className="inline-flex size-11 items-center justify-center rounded-full border border-border"
+              aria-label={t("admin.tabPlan")}
+              onClick={() => choose("plan")}
+            >
+              <Settings className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+        <div className="flex gap-2 overflow-x-auto px-4 py-3 lg:hidden">
+          {nav.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={cn(
+                "h-10 shrink-0 rounded-full px-3 text-sm",
+                tab === key ? "bg-[#0f3d2e] text-white" : "border border-border bg-white",
+              )}
+              onClick={() => choose(key)}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
+        <main className="space-y-4 px-4 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-3xl font-semibold">{t("admin.title")}</h1>
+              <p className="mt-1 text-sm text-muted">{t("admin.welcome")}</p>
+            </div>
+            <div className="text-sm text-muted">
+              <p className="flex items-center gap-2">
+                <Calendar className="size-4" aria-hidden="true" />
+                {dateLabel}
+              </p>
+              <p className="mt-1">{timeLabel}</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label={t("admin.statPending")} value={String(pendingTroops)} tone="blue" icon={<Clock className="size-5" />} />
+            <StatCard label={t("admin.statActive")} value={String(activeTroops)} tone="green" icon={<CheckCircle2 className="size-5" />} />
+            <StatCard label={t("admin.statProducts")} value={String(data.products.length)} tone="amber" icon={<Box className="size-5" />} />
+            <StatCard label={t("admin.statReports")} value={String(openReports)} tone="rose" icon={<XCircle className="size-5" />} />
+          </div>
+          {tab === "plan" && data.plan ? (
+            <PlanForm plan={data.plan} onDone={() => load().catch(() => undefined)} />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-white p-3">
+                <label className="relative min-w-48 flex-1">
+                  <Search className="pointer-events-none absolute inset-y-0 end-3 my-auto size-4 text-muted" aria-hidden="true" />
+                  <input
+                    className="h-11 w-full rounded-full border border-border bg-[#f7f8f6] pe-10 ps-4 text-sm"
+                    value={query}
+                    placeholder={t("admin.search")}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted">
+                  {t("admin.colStatus")}
+                  <select
+                    className="h-11 rounded-xl border border-border bg-white px-3"
+                    value={status}
+                    onChange={(event) => {
+                      setStatus(event.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {statusLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button type="button" className="gap-2" onClick={() => load().catch(() => undefined)}>
+                  <RefreshCw className="size-4" aria-hidden="true" />
+                  {t("admin.refresh")}
+                </Button>
+              </div>
+              <section className="overflow-hidden rounded-2xl border border-border bg-white">
+                <h2 className="px-4 py-4 text-lg font-semibold">{listTitle}</h2>
+                {visible.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="bg-[#f7f8f6] text-muted">
+                        <tr>
+                          {headers.map((header) => (
+                            <th key={header} className="px-4 py-3 text-start font-medium">
+                              {header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visible.map((row) => (
+                          <tr key={row.id} className="border-t border-border">
+                            {row.cells.map((cell, index) => (
+                              <td key={index} className="px-4 py-3">
+                                {cell}
+                              </td>
+                            ))}
+                            <td className="px-4 py-3">{row.action}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="px-4 pb-4 text-sm text-muted">{empty}</p>
+                )}
+                <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted">
+                  <span>
+                    {rows.length
+                      ? t("admin.showing", {
+                          from: (safePage - 1) * 8 + 1,
+                          to: Math.min(safePage * 8, rows.length),
+                          total: rows.length,
+                        })
+                      : ""}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border"
+                      disabled={safePage <= 1}
+                      onClick={() => setPage(safePage - 1)}
+                    >
+                      ‹
+                    </button>
+                    <span className="inline-flex size-9 items-center justify-center rounded-lg bg-[#0f3d2e] text-white">
+                      {safePage}
+                    </span>
+                    <button
+                      type="button"
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border"
+                      disabled={safePage >= pageCount}
+                      onClick={() => setPage(safePage + 1)}
+                    >
+                      ›
+                    </button>
+                  </span>
+                </div>
+              </section>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
+function toneFor(status: string): "green" | "blue" | "rose" | "amber" | "muted" {
+  if (status === "active" || status === "resolved") return "green";
+  if (status === "pending" || status === "open") return "blue";
+  if (status === "suspended" || status === "hidden" || status === "expired") return "rose";
+  if (status === "unavailable") return "amber";
+  return "muted";
+}
 
-function Rows({ rows }: { rows: (string | ReactNode)[][] }) {
+function Badge({ tone, children }: { tone: "green" | "blue" | "rose" | "amber" | "muted"; children: ReactNode }) {
+  const tones = {
+    green: "bg-[#e7f6ee] text-[#167944]",
+    blue: "bg-[#e7f0fb] text-[#2563eb]",
+    rose: "bg-[#fde8e8] text-[#dc2626]",
+    amber: "bg-[#fbf3dc] text-[#b45309]",
+    muted: "bg-[#f3f4f6] text-[#6b7280]",
+  };
   return (
-    <div className="space-y-2">
-      {rows.map((cells, index) => (
-        <div
-          key={index}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm"
-        >
-          <div className="flex flex-wrap gap-3">
-            {cells.slice(0, -1).map((cell, cellIndex) => (
-              <span key={cellIndex}>{cell}</span>
-            ))}
-          </div>
-          {cells[cells.length - 1]}
-        </div>
-      ))}
+    <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium", tones[tone])}>
+      {children}
+    </span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: string;
+  tone: "blue" | "green" | "amber" | "rose";
+  icon: ReactNode;
+}) {
+  const tones = {
+    blue: "bg-[#eef5fb]",
+    green: "bg-[#eef8f2]",
+    amber: "bg-[#fbf8ee]",
+    rose: "bg-[#fdf1f1]",
+  };
+  const icons = {
+    blue: "bg-[#dbeafe] text-[#2563eb]",
+    green: "bg-[#dcfce7] text-[#167944]",
+    amber: "bg-[#fef3c7] text-[#d97706]",
+    rose: "bg-[#fee2e2] text-[#dc2626]",
+  };
+  return (
+    <div className={cn("flex items-center gap-3 rounded-2xl p-4", tones[tone])}>
+      <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-full", icons[tone])}>{icon}</span>
+      <div>
+        <p className="text-sm text-muted">{label}</p>
+        <p className="text-3xl font-semibold tabular-nums">{value}</p>
+      </div>
     </div>
   );
 }

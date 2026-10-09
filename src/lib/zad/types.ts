@@ -85,5 +85,6 @@ export type Me = {
   };
   counts: { members: number; products: number };
   pendingProof: string | null;
+  joinRequest: null | { id: string; troopId: string; troopName: string };
   notifications: { id: string; body: string; isRead: boolean; createdAt: string }[];
 };

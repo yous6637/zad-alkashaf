@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Calendar, Flag, MapPin, MessageCircle, Share2, Tent } from "lucide-react";
 import { toast } from "sonner";
+import { ProductCard } from "@/components/products/product-card";
 import { ProductVisual } from "@/components/products/product-visual";
 import { Shell } from "@/components/layout/shell";
 import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
@@ -37,7 +39,8 @@ function ProductPage() {
   const { locale } = Route.useParams();
   const account = isLocale(locale) ? locale : "ar";
   const t = useT();
-  const item = Route.useLoaderData();
+  const page = Route.useLoaderData();
+  const item = page?.item ?? null;
   const { user, isPending } = useCurrentUserState();
   const [mode, setMode] = useState<"contact" | "report" | null>(null);
   const [pending, setPending] = useState(false);
@@ -82,6 +85,9 @@ function ProductPage() {
     <Shell>
       <ProductBody
         item={item}
+        logo={page?.logo ?? null}
+        commune={page?.commune ?? ""}
+        related={page?.related ?? []}
         account={account}
         mode={mode}
         setMode={setMode}
@@ -99,6 +105,9 @@ function ProductPage() {
 
 function ProductBody({
   item,
+  logo,
+  commune,
+  related,
   account,
   mode,
   setMode,
@@ -111,6 +120,9 @@ function ProductBody({
   signedIn,
 }: {
   item: Listing;
+  logo: string | null;
+  commune: string;
+  related: Listing[];
   account: "ar" | "fr";
   mode: "contact" | "report" | null;
   setMode: (mode: "contact" | "report" | null) => void;
@@ -153,45 +165,133 @@ function ProductBody({
           ? t("gear.opWanted")
           : t("gear.opExchange");
 
+  const shortCondition =
+    item.condition === "new" ? "home.condNew" : item.condition === "needs_repair" ? "home.condRepair" : "home.condUsed";
+
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="overflow-hidden rounded-2xl ring-1 ring-border">
-          <ProductVisual slug={item.categorySlug} className="min-h-72 w-full" />
-        </div>
-        <div>
-          <p className="text-sm text-muted">{item.createdAt}</p>
-          <h1 className="mt-1 text-3xl font-semibold">{item.title}</h1>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
-            <span className="rounded-sm bg-accent-soft px-2 py-1 text-accent">
-              {operation ? t(operation) : item.operation}
-            </span>
-            <span className="rounded-sm bg-surface px-2 py-1">{condition ? t(condition) : item.condition}</span>
-            <span className="rounded-sm bg-surface px-2 py-1">{item.wilayaName}</span>
-          </div>
-          <p className="mt-4 text-2xl font-semibold tabular-nums">{price}</p>
-          <p className="mt-4 text-muted">{item.description}</p>
-          <div className="mt-5 rounded-lg border border-border bg-card p-4">
-            <h2 className="font-semibold">{item.troopName}</h2>
+      <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted">
+        <Link to="/$locale" params={{ locale: account }} className="hover:text-accent">
+          {t("nav.home")}
+        </Link>
+        <span aria-hidden="true">/</span>
+        <Link to="/$locale/products" params={{ locale: account }} className="hover:text-accent">
+          {t("nav.products")}
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span className="text-fg">{item.title}</span>
+      </nav>
+      <div className="grid items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,1.05fr)]">
+        <aside className="order-3 space-y-4 lg:order-1">
+          <div className="rounded-2xl border border-border bg-card p-4 text-center">
+            {logo ? (
+              <img src={logo} alt="" className="mx-auto size-20 rounded-full object-cover" />
+            ) : (
+              <span className="mx-auto flex size-20 items-center justify-center rounded-full bg-accent-soft text-accent">
+                <Tent className="size-8" aria-hidden="true" />
+              </span>
+            )}
+            <h2 className="mt-3 text-lg font-semibold">{item.troopName}</h2>
+            <p className="mt-1 flex items-center justify-center gap-1 text-sm text-muted">
+              <MapPin className="size-4" aria-hidden="true" />
+              {item.wilayaName}
+              {commune ? ` · ${commune}` : ""}
+            </p>
             <Link
               to="/$locale/troops/$id"
               params={{ locale: account, id: item.troopId }}
-              className="mt-1 inline-flex h-11 items-center text-sm text-accent"
+              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl border border-accent text-sm font-medium text-accent"
             >
-              {t("product.troop")}
+              {t("product.viewTroop")}
             </Link>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" onClick={() => setMode("contact")}>
-                {t("product.contact")}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setMode("report")}>
-                {t("product.report")}
-              </Button>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-border bg-card p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted">{t("gear.condition")}</span>
+              <span>{t(shortCondition)}</span>
             </div>
-            <p className="mt-3 text-sm text-muted">{t("product.noPay")}</p>
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1 text-muted">
+                <Calendar className="size-4" aria-hidden="true" />
+                {t("product.addedOn")}
+              </span>
+              <span>{item.createdAt}</span>
+            </div>
+          </div>
+        </aside>
+        <div className="order-2">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span>{item.categoryName}</span>
+            <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
+              {t(shortCondition)}
+            </span>
+            {operation ? (
+              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-medium">
+                {t(operation)}
+              </span>
+            ) : null}
+          </div>
+          <h1 className="mt-2 text-3xl font-semibold">{item.title}</h1>
+          <p className="mt-4 text-3xl font-bold tabular-nums text-accent">{price}</p>
+          <p className="mt-3 flex items-center gap-1 text-sm text-muted">
+            <MapPin className="size-4" aria-hidden="true" />
+            {item.wilayaName}
+          </p>
+          <p className="mt-1 text-sm text-muted">{item.troopName}</p>
+          <p className="mt-4 line-clamp-3 text-muted">{item.description}</p>
+          <Button type="button" className="mt-5 h-12 w-full gap-2" onClick={() => setMode("contact")}>
+            <MessageCircle className="size-4" aria-hidden="true" />
+            {t("product.contact")}
+          </Button>
+          <p className="mt-2 text-center text-xs text-muted">{t("product.noPay")}</p>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
+            <button
+              type="button"
+              className="inline-flex h-11 items-center gap-1 text-muted"
+              onClick={() => setMode("report")}
+            >
+              <Flag className="size-4" aria-hidden="true" />
+              {t("product.report")}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center gap-1 text-muted"
+              onClick={() => {
+                const url = window.location.href;
+                const write = navigator.clipboard?.writeText(url);
+                if (!write) return;
+                write.then(() => toast.success(t("product.copied"))).catch(() => undefined);
+              }}
+            >
+              <Share2 className="size-4" aria-hidden="true" />
+              {t("product.share")}
+            </button>
+          </div>
+        </div>
+        <div className="order-1 overflow-hidden rounded-2xl bg-card ring-1 ring-border lg:order-3">
+          <div className="relative">
+            <ProductVisual slug={item.categorySlug} className="min-h-80 w-full" />
+            <span className="absolute top-3 start-3 rounded-full bg-accent px-3 py-1 text-xs font-medium text-white">
+              {t(shortCondition)}
+            </span>
           </div>
         </div>
       </div>
+      <section className="mt-8 rounded-2xl border border-border bg-card p-5">
+        <h2 className="text-lg font-semibold">{t("product.describe")}</h2>
+        <p className="mt-3 whitespace-pre-wrap leading-7 text-muted">{item.description}</p>
+        {condition ? <p className="mt-3 text-sm text-muted">{t(condition)}</p> : null}
+      </section>
+      {related.length ? (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">{t("product.related")}</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((relatedItem) => (
+              <ProductCard key={relatedItem.id} item={relatedItem} />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <Modal
         open={mode !== null}
         onOpenChange={(open) => {

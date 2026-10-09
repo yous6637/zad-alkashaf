@@ -18,6 +18,7 @@ import { Route as LocaleLoginRouteImport } from './routes/$locale/login'
 import { Route as LocaleProductsRouteImport } from './routes/$locale/products'
 import { Route as LocaleRegisterRouteImport } from './routes/$locale/register'
 import { Route as LocaleTroopsRouteImport } from './routes/$locale/troops'
+import { Route as LocaleAccountProductRouteImport } from './routes/$locale/account_.product'
 import { Route as LocaleProductsIdRouteImport } from './routes/$locale/products_.$id'
 import { Route as LocaleTroopsIdRouteImport } from './routes/$locale/troops_.$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -67,6 +68,11 @@ const LocaleTroopsRoute = LocaleTroopsRouteImport.update({
   path: '/troops',
   getParentRoute: () => LocaleRoute,
 } as any)
+const LocaleAccountProductRoute = LocaleAccountProductRouteImport.update({
+  id: '/account_/product',
+  path: '/account/product',
+  getParentRoute: () => LocaleRoute,
+} as any)
 const LocaleProductsIdRoute = LocaleProductsIdRouteImport.update({
   id: '/products_/$id',
   path: '/products/$id',
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/$locale/register': typeof LocaleRegisterRoute
   '/$locale/troops': typeof LocaleTroopsRoute
   '/$locale/': typeof LocaleIndexRoute
+  '/$locale/account/product': typeof LocaleAccountProductRoute
   '/$locale/products/$id': typeof LocaleProductsIdRoute
   '/$locale/troops/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByTo {
   '/$locale/register': typeof LocaleRegisterRoute
   '/$locale/troops': typeof LocaleTroopsRoute
   '/$locale': typeof LocaleIndexRoute
+  '/$locale/account/product': typeof LocaleAccountProductRoute
   '/$locale/products/$id': typeof LocaleProductsIdRoute
   '/$locale/troops/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/$locale/register': typeof LocaleRegisterRoute
   '/$locale/troops': typeof LocaleTroopsRoute
   '/$locale/': typeof LocaleIndexRoute
+  '/$locale/account_/product': typeof LocaleAccountProductRoute
   '/$locale/products_/$id': typeof LocaleProductsIdRoute
   '/$locale/troops_/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/$locale/register'
     | '/$locale/troops'
     | '/$locale/'
+    | '/$locale/account/product'
     | '/$locale/products/$id'
     | '/$locale/troops/$id'
     | '/api/auth/$'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/$locale/register'
     | '/$locale/troops'
     | '/$locale'
+    | '/$locale/account/product'
     | '/$locale/products/$id'
     | '/$locale/troops/$id'
     | '/api/auth/$'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/$locale/register'
     | '/$locale/troops'
     | '/$locale/'
+    | '/$locale/account_/product'
     | '/$locale/products_/$id'
     | '/$locale/troops_/$id'
     | '/api/auth/$'
@@ -240,6 +252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LocaleTroopsRouteImport
       parentRoute: typeof LocaleRoute
     }
+    '/$locale/account_/product': {
+      id: '/$locale/account_/product'
+      path: '/account/product'
+      fullPath: '/$locale/account/product'
+      preLoaderRoute: typeof LocaleAccountProductRouteImport
+      parentRoute: typeof LocaleRoute
+    }
     '/$locale/products_/$id': {
       id: '/$locale/products_/$id'
       path: '/products/$id'
@@ -272,6 +291,7 @@ interface LocaleRouteChildren {
   LocaleRegisterRoute: typeof LocaleRegisterRoute
   LocaleTroopsRoute: typeof LocaleTroopsRoute
   LocaleIndexRoute: typeof LocaleIndexRoute
+  LocaleAccountProductRoute: typeof LocaleAccountProductRoute
   LocaleProductsIdRoute: typeof LocaleProductsIdRoute
   LocaleTroopsIdRoute: typeof LocaleTroopsIdRoute
 }
@@ -284,6 +304,7 @@ const LocaleRouteChildren: LocaleRouteChildren = {
   LocaleRegisterRoute: LocaleRegisterRoute,
   LocaleTroopsRoute: LocaleTroopsRoute,
   LocaleIndexRoute: LocaleIndexRoute,
+  LocaleAccountProductRoute: LocaleAccountProductRoute,
   LocaleProductsIdRoute: LocaleProductsIdRoute,
   LocaleTroopsIdRoute: LocaleTroopsIdRoute,
 }

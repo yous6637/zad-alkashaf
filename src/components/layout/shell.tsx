@@ -73,7 +73,7 @@ export function Shell({ children, flush = false }: { children: ReactNode; flush?
         <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3">
           <Link to="/$locale" params={{ locale }} className="flex items-center gap-2">
             <Tent className="size-9 text-accent" strokeWidth={1.75} aria-hidden="true" />
-            <span className="leading-tight">
+            <span className="hidden leading-tight md:block">
               <span className="block text-lg font-bold text-accent">{t("brand.name")}</span>
               <span className="hidden text-xs text-muted sm:block">{t("brand.tagline")}</span>
             </span>
@@ -83,7 +83,7 @@ export function Shell({ children, flush = false }: { children: ReactNode; flush?
             <a
               href={languageHref}
               hrefLang={other}
-              className="inline-flex h-11 items-center rounded-full px-3 text-sm font-medium text-muted"
+              className="hidden h-11 items-center rounded-full px-3 text-sm font-medium text-muted lg:inline-flex"
             >
               {other === "ar" ? "العربية" : "FR"}
             </a>
@@ -163,6 +163,14 @@ export function Shell({ children, flush = false }: { children: ReactNode; flush?
                 ) : null}
               </>
             ) : null}
+            <a
+              href={languageHref}
+              hrefLang={other}
+              className="flex h-11 items-center rounded-md px-3 text-sm font-medium"
+              onClick={() => setOpen(false)}
+            >
+              {other === "ar" ? "العربية" : "Français"}
+            </a>
           </nav>
         ) : null}
       </header>
