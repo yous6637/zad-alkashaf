@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Calendar, Flag, MapPin, MessageCircle, Share2, Tent } from "lucide-react";
 import { toast } from "sonner";
 import { ProductCard } from "@/components/products/product-card";
-import { ProductVisual } from "@/components/products/product-visual";
+import ProductGallery from "@/components/products/product-gallery";
 import { Shell } from "@/components/layout/shell";
 import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -166,88 +166,151 @@ function ProductBody({
           : t("gear.opExchange");
 
   const shortCondition =
-    item.condition === "new" ? "home.condNew" : item.condition === "needs_repair" ? "home.condRepair" : "home.condUsed";
+    item.condition === "new"
+      ? "home.condNew"
+      : item.condition === "needs_repair"
+        ? "home.condRepair"
+        : "home.condUsed";
+  const formattedDate = item.createdAt;
 
   return (
     <>
-      <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted">
-        <Link to="/$locale" params={{ locale: account }} className="hover:text-accent">
+      <nav
+        className="mb-5 flex flex-wrap items-center gap-2 text-sm text-muted"
+        aria-label={account === "ar" ? "مسار التنقل" : "Breadcrumb"}
+      >
+        <Link
+          to="/$locale"
+          params={{ locale: account }}
+          className="transition-colors hover:text-accent"
+        >
           {t("nav.home")}
         </Link>
-        <span aria-hidden="true">/</span>
-        <Link to="/$locale/products" params={{ locale: account }} className="hover:text-accent">
+        <span aria-hidden="true">‹</span>
+        <Link
+          to="/$locale/products"
+          params={{ locale: account }}
+          className="transition-colors hover:text-accent"
+        >
           {t("nav.products")}
         </Link>
-        <span aria-hidden="true">/</span>
-        <span className="text-fg">{item.title}</span>
+        <span aria-hidden="true">‹</span>
+        <span className="max-w-56 truncate font-medium text-fg">{item.title}</span>
       </nav>
-      <div className="grid items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,1.05fr)]">
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_16rem]">
         <aside className="order-3 space-y-4 lg:order-1">
-          <div className="rounded-2xl border border-border bg-card p-4 text-center">
-            {logo ? (
-              <img src={logo} alt="" className="mx-auto size-20 rounded-full object-cover" />
-            ) : (
-              <span className="mx-auto flex size-20 items-center justify-center rounded-full bg-accent-soft text-accent">
-                <Tent className="size-8" aria-hidden="true" />
+          <section className="rounded-2xl border border-border bg-card p-5 text-center shadow-sm">
+            <div className="mx-auto flex size-20 items-center justify-center overflow-hidden rounded-2xl bg-accent-soft ring-1 ring-accent/10">
+              {logo ? (
+                <img src={logo} alt="" className="size-full object-cover" />
+              ) : (
+                <Tent className="size-9 text-accent" aria-hidden="true" />
+              )}
+            </div>
+            <p className="mt-4 text-xs font-semibold text-accent">
+              {account === "ar" ? "الفوج الناشر" : "Publié par"}
+            </p>
+            <h2 className="mt-1 text-lg font-bold">{item.troopName}</h2>
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-muted">
+              <MapPin className="size-4 shrink-0 text-accent" aria-hidden="true" />
+              <span>
+                {item.wilayaName}
+                {commune ? ` · ${commune}` : ""}
               </span>
-            )}
-            <h2 className="mt-3 text-lg font-semibold">{item.troopName}</h2>
-            <p className="mt-1 flex items-center justify-center gap-1 text-sm text-muted">
-              <MapPin className="size-4" aria-hidden="true" />
-              {item.wilayaName}
-              {commune ? ` · ${commune}` : ""}
             </p>
             <Link
               to="/$locale/troops/$id"
               params={{ locale: account, id: item.troopId }}
-              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl border border-accent text-sm font-medium text-accent"
+              className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-xl border border-accent/40 font-semibold text-accent transition-colors hover:bg-accent-soft"
             >
               {t("product.viewTroop")}
             </Link>
-          </div>
-          <div className="space-y-3 rounded-2xl border border-border bg-card p-4 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted">{t("gear.condition")}</span>
-              <span>{t(shortCondition)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-1 text-muted">
-                <Calendar className="size-4" aria-hidden="true" />
-                {t("product.addedOn")}
-              </span>
-              <span>{item.createdAt}</span>
-            </div>
-          </div>
+          </section>
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h3 className="font-bold">
+              {account === "ar" ? "معلومات إضافية" : "Informations complémentaires"}
+            </h3>
+            <dl className="mt-4 space-y-4 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-muted">{t("gear.condition")}</dt>
+                <dd className="text-end font-medium">{t(shortCondition)}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-muted">{account === "ar" ? "نوع العرض" : "Type d’annonce"}</dt>
+                <dd className="text-end font-medium">{operation ? t(operation) : "—"}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-muted">{t("product.addedOn")}</dt>
+                <dd className="text-end font-medium">{formattedDate}</dd>
+              </div>
+            </dl>
+          </section>
         </aside>
-        <div className="order-2">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-            <span>{item.categoryName}</span>
-            <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
+
+        <div className="order-1 min-w-0 lg:order-2">
+          <ProductGallery
+            slug={item.categorySlug}
+            badge={t(shortCondition)}
+            rtl={account === "ar"}
+            label={
+              account === "ar"
+                ? { gallery: "معرض الصور", prev: "الصورة السابقة", next: "الصورة التالية" }
+                : { gallery: "Galerie d’images", prev: "Image précédente", next: "Image suivante" }
+            }
+          />
+        </div>
+
+        <div className="order-1 min-w-0 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6 lg:order-2 lg:bg-transparent lg:border-0 lg:p-0 lg:shadow-none">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium text-muted">{item.categoryName}</span>
+            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
               {t(shortCondition)}
             </span>
             {operation ? (
-              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-medium">
+              <span className="rounded-full bg-sand-soft px-3 py-1 text-xs font-semibold text-fg">
                 {t(operation)}
               </span>
             ) : null}
           </div>
-          <h1 className="mt-2 text-3xl font-semibold">{item.title}</h1>
-          <p className="mt-4 text-3xl font-bold tabular-nums text-accent">{price}</p>
-          <p className="mt-3 flex items-center gap-1 text-sm text-muted">
-            <MapPin className="size-4" aria-hidden="true" />
-            {item.wilayaName}
+          <h1 className="mt-3 text-2xl font-bold leading-tight sm:text-3xl">{item.title}</h1>
+          <p className="mt-5 text-3xl font-extrabold tracking-tight text-accent sm:text-4xl">
+            {price}
           </p>
-          <p className="mt-1 text-sm text-muted">{item.troopName}</p>
-          <p className="mt-4 line-clamp-3 text-muted">{item.description}</p>
-          <Button type="button" className="mt-5 h-12 w-full gap-2" onClick={() => setMode("contact")}>
-            <MessageCircle className="size-4" aria-hidden="true" />
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted">
+            <MapPin className="size-4 text-accent" aria-hidden="true" />
+            <span>{item.wilayaName}</span>
+          </div>
+          <div className="mt-5 grid grid-cols-3 gap-2 rounded-xl bg-surface p-3 text-center">
+            <div className="px-1">
+              <Tent className="mx-auto size-5 text-accent" aria-hidden="true" />
+              <span className="mt-2 block text-xs font-medium">
+                {account === "ar" ? "معدات كشفية" : "Équipement scout"}
+              </span>
+            </div>
+            <div className="border-x border-border px-1">
+              <MapPin className="mx-auto size-5 text-accent" aria-hidden="true" />
+              <span className="mt-2 block text-xs font-medium">{item.wilayaName}</span>
+            </div>
+            <div className="px-1">
+              <Calendar className="mx-auto size-5 text-accent" aria-hidden="true" />
+              <span className="mt-2 block text-xs font-medium">{t("product.addedOn")}</span>
+            </div>
+          </div>
+          <p className="mt-5 line-clamp-4 leading-7 text-muted">{item.description}</p>
+          <Button
+            type="button"
+            className="mt-6 h-12 w-full gap-2 rounded-xl text-base font-bold shadow-sm"
+            onClick={() => setMode("contact")}
+          >
+            <MessageCircle className="size-5" aria-hidden="true" />
             {t("product.contact")}
           </Button>
           <p className="mt-2 text-center text-xs text-muted">{t("product.noPay")}</p>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-1 text-muted"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-muted transition-colors hover:bg-danger-soft hover:text-danger"
               onClick={() => setMode("report")}
             >
               <Flag className="size-4" aria-hidden="true" />
@@ -255,7 +318,7 @@ function ProductBody({
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-1 text-muted"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-muted transition-colors hover:bg-accent-soft hover:text-accent"
               onClick={() => {
                 const url = window.location.href;
                 const write = navigator.clipboard?.writeText(url);
@@ -268,24 +331,47 @@ function ProductBody({
             </button>
           </div>
         </div>
-        <div className="order-1 overflow-hidden rounded-2xl bg-card ring-1 ring-border lg:order-3">
-          <div className="relative">
-            <ProductVisual slug={item.categorySlug} className="min-h-80 w-full" />
-            <span className="absolute top-3 start-3 rounded-full bg-accent px-3 py-1 text-xs font-medium text-white">
-              {t(shortCondition)}
-            </span>
+      </div>
+
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
+        <div className="flex items-center gap-3 border-b border-border pb-4">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
+            <Tent className="size-5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold">{t("product.describe")}</h2>
+            <p className="mt-0.5 text-sm text-muted">
+              {account === "ar"
+                ? "تفاصيل ومعلومات عن المنتج"
+                : "Détails et informations sur le produit"}
+            </p>
           </div>
         </div>
-      </div>
-      <section className="mt-8 rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-lg font-semibold">{t("product.describe")}</h2>
-        <p className="mt-3 whitespace-pre-wrap leading-7 text-muted">{item.description}</p>
-        {condition ? <p className="mt-3 text-sm text-muted">{t(condition)}</p> : null}
+        <p className="mt-5 whitespace-pre-wrap leading-8 text-muted">{item.description}</p>
+        {condition ? (
+          <p className="mt-4 inline-flex rounded-lg bg-surface px-3 py-2 text-sm font-medium text-muted">
+            {t(condition)}
+          </p>
+        ) : null}
       </section>
       {related.length ? (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold">{t("product.related")}</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="mt-9 pb-3">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-accent">
+                {account === "ar" ? "اكتشف المزيد" : "À découvrir"}
+              </p>
+              <h2 className="mt-1 text-xl font-bold sm:text-2xl">{t("product.related")}</h2>
+            </div>
+            <Link
+              to="/$locale/products"
+              params={{ locale: account }}
+              className="inline-flex min-h-10 items-center text-sm font-semibold text-accent hover:underline"
+            >
+              {t("nav.products")} ←
+            </Link>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {related.map((relatedItem) => (
               <ProductCard key={relatedItem.id} item={relatedItem} />
             ))}
@@ -337,7 +423,9 @@ function ProductBody({
                   toast.success(t("product.reported"));
                   setMode(null);
                 })
-                .catch((caught) => toast.error(caught instanceof Error ? caught.message : t("product.sendFailed")))
+                .catch((caught) =>
+                  toast.error(caught instanceof Error ? caught.message : t("product.sendFailed")),
+                )
                 .finally(() => setPending(false));
             }}
           >
@@ -368,10 +456,14 @@ function ContactDetails({ contact }: { contact: ContactState }) {
   if (contact.status === "idle" || contact.status === "loading") {
     return <div className="h-16 animate-pulse rounded-md bg-surface" />;
   }
-  if (contact.status === "need_troop") return <p className="text-sm text-muted">{t("product.needTroop")}</p>;
-  if (contact.status === "gone") return <p className="text-sm text-muted">{t("product.goneBody")}</p>;
-  if (contact.status === "error") return <p className="text-sm text-muted">{t("product.sendFailed")}</p>;
-  if (!contact.phone && !contact.email) return <p className="text-sm text-muted">{t("product.noContact")}</p>;
+  if (contact.status === "need_troop")
+    return <p className="text-sm text-muted">{t("product.needTroop")}</p>;
+  if (contact.status === "gone")
+    return <p className="text-sm text-muted">{t("product.goneBody")}</p>;
+  if (contact.status === "error")
+    return <p className="text-sm text-muted">{t("product.sendFailed")}</p>;
+  if (!contact.phone && !contact.email)
+    return <p className="text-sm text-muted">{t("product.noContact")}</p>;
   const phone = /^[0-9+\s()-]{6,20}$/.test(contact.phone) ? contact.phone : "";
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) ? contact.email : "";
   if (!phone && !email) return <p className="text-sm text-muted">{t("product.noContact")}</p>;
@@ -380,7 +472,11 @@ function ContactDetails({ contact }: { contact: ContactState }) {
       {phone ? (
         <p>
           <span className="text-muted">{t("product.phone")}</span>
-          <a href={`tel:${phone}`} dir="ltr" className="ms-2 inline-flex h-11 items-center font-medium text-accent">
+          <a
+            href={`tel:${phone}`}
+            dir="ltr"
+            className="ms-2 inline-flex h-11 items-center font-medium text-accent"
+          >
             {phone}
           </a>
         </p>
@@ -388,7 +484,10 @@ function ContactDetails({ contact }: { contact: ContactState }) {
       {email ? (
         <p>
           <span className="text-muted">{t("product.email")}</span>
-          <a href={`mailto:${email}`} className="ms-2 inline-flex h-11 items-center font-medium text-accent">
+          <a
+            href={`mailto:${email}`}
+            className="ms-2 inline-flex h-11 items-center font-medium text-accent"
+          >
             {email}
           </a>
         </p>

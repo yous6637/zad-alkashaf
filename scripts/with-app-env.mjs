@@ -20,10 +20,13 @@
  * `process.env`, which is why the merge has to happen before Vite starts.
  */
 import { spawn } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { constants as osConstants } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
 
 export const APP_ENV_REL_PATH = ".grok/app-env.json";
 
@@ -104,6 +107,26 @@ export function isMainModule(moduleUrl) {
   }
 }
 
+/**
+ * `spawn("vite")` does not see `node_modules/.bin` shims on Windows (`vite.cmd`),
+ * which surfaces as `spawn vite ENOENT`. Run the package's JS bin through the
+ * current Node instead of a `.cmd` shim.
+ */
+export function resolveSpawnTarget(command, args) {
+  try {
+    const pkgPath = require.resolve(`${command}/package.json`);
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    const bin = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.[command];
+    if (bin) {
+      const file = join(dirname(pkgPath), bin);
+      if (existsSync(file)) return { file: process.execPath, args: [file, ...args] };
+    }
+  } catch {
+    // The command is not an installed package (for example `process.execPath` in tests).
+  }
+  return { file: command, args };
+}
+
 function main(argv) {
   const [command, ...args] = argv;
   if (!command) {
@@ -111,7 +134,8 @@ function main(argv) {
     process.exit(2);
   }
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const target = resolveSpawnTarget(command, args);
+  const child = spawn(target.file, target.args, { stdio: "inherit", env });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

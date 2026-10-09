@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Facebook, Instagram, Tent, User, Youtube } from "lucide-react";
+import { Facebook, Instagram, Menu, Tent, User, X, Youtube } from "lucide-react";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { cn } from "@/lib/cn";
@@ -70,110 +70,142 @@ export function Shell({ children, flush = false }: { children: ReactNode; flush?
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3">
-          <Link to="/$locale" params={{ locale }} className="flex items-center gap-2">
-            <Tent className="size-9 text-accent" strokeWidth={1.75} aria-hidden="true" />
-            <span className="hidden leading-tight md:block">
-              <span className="block text-lg font-bold text-accent">{t("brand.name")}</span>
-              <span className="hidden text-xs text-muted sm:block">{t("brand.tagline")}</span>
-            </span>
+  <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3">
+    <Link to="/$locale" params={{ locale }} className="flex items-center gap-2" aria-label={t("brand.name")}>
+      <Tent className="size-9 text-accent" strokeWidth={1.75} aria-hidden="true" />
+      {/* title + tagline hidden on mobile */}
+      <span className="hidden leading-tight sm:block">
+        <span className="block text-lg font-bold text-accent">{t("brand.name")}</span>
+        <span className="hidden text-xs text-muted md:block">{t("brand.tagline")}</span>
+      </span>
+    </Link>
+
+    <nav className="ms-4 hidden flex-1 items-center justify-center gap-1 lg:flex">{nav}</nav>
+
+    <div className="ms-auto flex items-center gap-2">
+      {/* md+ only: on mobile these live in the menu */}
+      <a
+        href={languageHref}
+        hrefLang={other}
+        className="hidden h-11 items-center rounded-full px-3 text-sm font-medium text-muted md:inline-flex"
+      >
+        {other === "ar" ? "العربية" : "FR"}
+      </a>
+
+      {isPending ? (
+        <div className="hidden h-11 w-24 animate-pulse rounded-full bg-surface md:block" />
+      ) : user ? (
+        <>
+          <Link
+            to="/$locale/account"
+            params={{ locale }}
+            className="hidden h-11 items-center rounded-full px-3 text-sm font-medium md:inline-flex"
+          >
+            {t("nav.account")}
           </Link>
-          <nav className="ms-4 hidden flex-1 items-center justify-center gap-1 lg:flex">{nav}</nav>
-          <div className="ms-auto flex items-center gap-2">
-            <a
-              href={languageHref}
-              hrefLang={other}
-              className="hidden h-11 items-center rounded-full px-3 text-sm font-medium text-muted lg:inline-flex"
+          {admin ? (
+            <Link
+              to="/$locale/admin"
+              params={{ locale }}
+              className="hidden h-11 items-center rounded-full px-3 text-sm font-medium md:inline-flex"
             >
-              {other === "ar" ? "العربية" : "FR"}
-            </a>
-            {isPending ? (
-              <div className="h-11 w-24 animate-pulse rounded-full bg-surface" />
-            ) : user ? (
-              <>
-                <Link
-                  to="/$locale/account"
-                  params={{ locale }}
-                  className="hidden h-11 items-center rounded-full px-3 text-sm font-medium md:inline-flex"
-                >
-                  {t("nav.account")}
-                </Link>
-                {admin ? (
-                  <Link
-                    to="/$locale/admin"
-                    params={{ locale }}
-                    className="hidden h-11 items-center rounded-full px-3 text-sm font-medium md:inline-flex"
-                  >
-                    {t("nav.admin")}
-                  </Link>
-                ) : null}
-                <UserButton />
-              </>
-            ) : (
-              <>
-                <Link
-                  to="/$locale/register"
-                  params={{ locale }}
-                  className="inline-flex h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-fg"
-                >
-                  {t("nav.register")}
-                </Link>
-                <Link
-                  to="/$locale/login"
-                  params={{ locale }}
-                  className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium"
-                >
-                  <User className="size-4" aria-hidden="true" />
-                  {t("nav.login")}
-                </Link>
-              </>
-            )}
-            <button
-              type="button"
-              className="inline-flex h-11 items-center rounded-full border border-border px-3 text-sm lg:hidden"
-              aria-expanded={open}
-              onClick={() => setOpen((value) => !value)}
-            >
-              {t("nav.menu")}
-            </button>
-          </div>
-        </div>
-        {open ? (
-          <nav className="flex flex-col border-t border-border px-4 py-2 lg:hidden">
-            {nav}
-            {user ? (
-              <>
-                <Link
-                  to="/$locale/account"
-                  params={{ locale }}
-                  className="flex h-11 items-center rounded-md px-3 text-sm font-medium"
-                  onClick={() => setOpen(false)}
-                >
-                  {t("nav.account")}
-                </Link>
-                {admin ? (
-                  <Link
-                    to="/$locale/admin"
-                    params={{ locale }}
-                    className="flex h-11 items-center rounded-md px-3 text-sm font-medium"
-                    onClick={() => setOpen(false)}
-                  >
-                    {t("nav.admin")}
-                  </Link>
-                ) : null}
-              </>
-            ) : null}
-            <a
-              href={languageHref}
-              hrefLang={other}
-              className="flex h-11 items-center rounded-md px-3 text-sm font-medium"
+              {t("nav.admin")}
+            </Link>
+          ) : null}
+          <UserButton />
+        </>
+      ) : (
+        <>
+          <Link
+            to="/$locale/register"
+            params={{ locale }}
+            className="hidden h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-fg md:inline-flex"
+          >
+            {t("nav.register")}
+          </Link>
+          <Link
+            to="/$locale/login"
+            params={{ locale }}
+            className="hidden h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium md:inline-flex"
+          >
+            <User className="size-4" aria-hidden="true" />
+            {t("nav.login")}
+          </Link>
+        </>
+      )}
+
+      <button
+        type="button"
+        className="inline-flex size-11 items-center justify-center rounded-full border border-border lg:hidden"
+        aria-expanded={open}
+        aria-label={t("nav.menu")}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
+      </button>
+    </div>
+  </div>
+
+  {open ? (
+    <nav className="flex flex-col border-t border-border px-4 py-2 lg:hidden">
+      {nav}
+
+      {/* items below are hidden at md+ because the header already shows them */}
+      <div className="mt-2 flex flex-col border-t border-border pt-2 md:hidden">
+        {user ? (
+          <>
+            <Link
+              to="/$locale/account"
+              params={{ locale }}
+              className="flex h-11 items-center px-3 text-sm font-medium"
               onClick={() => setOpen(false)}
             >
-              {other === "ar" ? "العربية" : "Français"}
-            </a>
-          </nav>
+              {t("nav.account")}
+            </Link>
+            {admin ? (
+              <Link
+                to="/$locale/admin"
+                params={{ locale }}
+                className="flex h-11 items-center px-3 text-sm font-medium"
+                onClick={() => setOpen(false)}
+              >
+                {t("nav.admin")}
+              </Link>
+            ) : null}
+          </>
+        ) : !isPending ? (
+          <div className="flex gap-2 px-3 py-2">
+            <Link
+              to="/$locale/register"
+              params={{ locale }}
+              className="inline-flex h-11 flex-1 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-fg"
+              onClick={() => setOpen(false)}
+            >
+              {t("nav.register")}
+            </Link>
+            <Link
+              to="/$locale/login"
+              params={{ locale }}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-border bg-card text-sm font-medium"
+              onClick={() => setOpen(false)}
+            >
+              <User className="size-4" aria-hidden="true" />
+              {t("nav.login")}
+            </Link>
+          </div>
         ) : null}
-      </header>
+
+        <a
+          href={languageHref}
+          hrefLang={other}
+          className="flex h-11 items-center px-3 text-sm font-medium text-muted"
+        >
+          {other === "ar" ? "العربية" : "Français"}
+        </a>
+      </div>
+    </nav>
+  ) : null}
+</header>
       <main className={flush ? "flex-1" : "mx-auto w-full max-w-7xl flex-1 px-4 py-6"}>{children}</main>
       <footer className="bg-forest text-white">
         <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4">

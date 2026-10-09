@@ -9,7 +9,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { isLocale, translate } from "@/lib/i18n";
 
 const loginSchema = z.object({
-  email: z.string().trim().email().max(120),
+  email: z.email().max(120),
   password: z.string().min(8).max(72),
 });
 
