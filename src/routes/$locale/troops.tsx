@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { EmptyState } from "@/components/home/empty-state";
+import { TroopsPending } from "@/components/layout/route-pending";
+import { ErrorPage } from "@/components/layout/status-page";
 import { Shell } from "@/components/layout/shell";
 import { TroopCard } from "@/components/troops/troop-card";
 import { useT } from "@/lib/use-locale";
@@ -7,6 +9,10 @@ import { listTroops } from "@/lib/zad/api";
 
 export const Route = createFileRoute("/$locale/troops")({
   loader: ({ params }) => listTroops({ data: { locale: params.locale === "fr" ? "fr" : "ar" } }),
+  pendingMs: 0,
+  pendingMinMs: 200,
+  pendingComponent: TroopsPending,
+  errorComponent: ErrorPage,
   component: TroopsPage,
 });
 

@@ -1,6 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { z } from "zod";
 import { ProductCard } from "@/components/products/product-card";
+import { ProductsPending } from "@/components/layout/route-pending";
+import { ErrorPage } from "@/components/layout/status-page";
 import { Shell } from "@/components/layout/shell";
 import { Button, controlClass, Field } from "@/components/shared/controls";
 import { useT } from "@/lib/use-locale";
@@ -9,6 +11,8 @@ import type { CatalogQuery } from "@/lib/zad/types";
 
 const operations = ["sale", "rent", "exchange", "wanted"] as const;
 const conditions = ["new", "used_good", "needs_repair"] as const;
+const pageSize = 24;
+const maxPage = 20;
 
 function num(value: unknown) {
   const n = typeof value === "number" ? value : typeof value === "string" && value ? Number(value) : Number.NaN;
@@ -19,10 +23,17 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]) {
   return typeof value === "string" && allowed.includes(value as T) ? (value as T) : "";
 }
 
+function pageOf(value: unknown) {
+  const page = num(value);
+  if (page === undefined || page <= 1) return undefined;
+  return Math.min(page, maxPage);
+}
+
 export const Route = createFileRoute("/$locale/products")({
   validateSearch: (search: Record<string, unknown>): CatalogQuery => {
     const wilaya = num(search.wilayaCode);
     const category = z.string().uuid().safeParse(search.categoryId);
+    const page = pageOf(search.page);
     return {
       q: typeof search.q === "string" ? search.q.slice(0, 80) : "",
       categoryId: category.success ? category.data : "",
@@ -30,22 +41,29 @@ export const Route = createFileRoute("/$locale/products")({
       operation: oneOf(search.operation, operations),
       condition: oneOf(search.condition, conditions),
       maxPrice: num(search.maxPrice),
+      ...(page ? { page } : {}),
     };
   },
   loaderDeps: ({ search }) => search,
   loader: async ({ deps, params }) => {
     const locale = params.locale === "fr" ? "fr" : "ar";
+    const { page, ...filters } = deps;
     const [meta, listings] = await Promise.all([
       getMeta({ data: { locale } }),
-      listProducts({ data: { ...deps, locale } }),
+      listProducts({ data: { ...filters, locale, limit: (page ?? 1) * pageSize } }),
     ]);
     return { meta, listings };
   },
+  pendingMs: 0,
+  pendingMinMs: 200,
+  pendingComponent: ProductsPending,
+  errorComponent: ErrorPage,
   component: ProductsPage,
 });
 
 function ProductsPage() {
   const t = useT();
+  const navigating = useRouterState({ select: (state) => state.status === "pending" });
   const { meta, listings } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: "/$locale/products" });
@@ -77,6 +95,35 @@ function ProductsPage() {
       },
     });
   }
+
+  function clearFilters() {
+    navigate({
+      search: {
+        q: "",
+        categoryId: "",
+        wilayaCode: undefined,
+        operation: "",
+        condition: "",
+        maxPrice: undefined,
+      },
+    });
+  }
+
+  const filters: string[] = [];
+  if (search.q) filters.push(t("catalog.filterQ", { value: search.q }));
+  const category = meta.categories.find((item) => item.id === search.categoryId);
+  if (category) filters.push(category.name);
+  const wilaya = meta.wilayas.find((item) => item.code === search.wilayaCode);
+  if (wilaya) filters.push(wilaya.name);
+  if (search.operation && search.operation in operationKey) {
+    filters.push(t(operationKey[search.operation as keyof typeof operationKey]));
+  }
+  if (search.condition && search.condition in conditionKey) {
+    filters.push(t(conditionKey[search.condition as keyof typeof conditionKey]));
+  }
+  if (search.maxPrice !== undefined) filters.push(t("catalog.filterPrice", { amount: search.maxPrice }));
+  const total = listings[0]?.matchCount ?? 0;
+  const hasMore = listings.length < total && (search.page ?? 1) < maxPage;
 
   return (
     <Shell>
@@ -138,28 +185,26 @@ function ProductsPage() {
         </Field>
         <p className="text-sm text-muted md:col-span-2 lg:col-span-3">{t("catalog.priceHint")}</p>
         <div className="flex flex-wrap gap-2 md:col-span-2 lg:col-span-3">
-          <Button type="submit">{t("catalog.search")}</Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() =>
-              navigate({
-                search: {
-                  q: "",
-                  categoryId: "",
-                  wilayaCode: undefined,
-                  operation: "",
-                  condition: "",
-                  maxPrice: undefined,
-                },
-              })
-            }
-          >
+          <Button type="submit" disabled={navigating}>
+            {navigating ? t("auth.pending") : t("catalog.search")}
+          </Button>
+          <Button type="button" variant="ghost" onClick={clearFilters}>
             {t("catalog.clear")}
           </Button>
         </div>
       </form>
-      <p className="mt-4 text-sm text-muted">{t("catalog.count", { count: listings.length })}</p>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {listings.length < total
+            ? t("catalog.showing", { shown: listings.length, count: total })
+            : t("catalog.count", { count: total })}
+        </p>
+        {filters.length ? (
+          <Button type="button" variant="ghost" onClick={clearFilters}>
+            {t("catalog.clear")}
+          </Button>
+        ) : null}
+      </div>
       {listings.length ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {listings.map((item) => (
@@ -167,8 +212,28 @@ function ProductsPage() {
           ))}
         </div>
       ) : (
-        <div className="mt-4 rounded-xl border border-border bg-card p-8 text-center text-muted">{t("catalog.empty")}</div>
+        <div className="mt-4 rounded-xl border border-border bg-card p-8 text-center text-muted">
+          {filters.length ? t("catalog.emptyFiltered", { filters: filters.join(" · ") }) : t("catalog.empty")}
+        </div>
       )}
+      {hasMore ? (
+        <div className="mt-6 flex justify-center">
+          <Button
+            type="button"
+            disabled={navigating}
+            onClick={() =>
+              navigate({
+                search: {
+                  ...search,
+                  page: (search.page ?? 1) + 1,
+                },
+              })
+            }
+          >
+            {navigating ? t("auth.pending") : t("catalog.more")}
+          </Button>
+        </div>
+      ) : null}
     </Shell>
   );
 }

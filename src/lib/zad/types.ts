@@ -27,6 +27,7 @@ export type Listing = {
   troopId: string;
   troopName: string;
   createdAt: string;
+  images: string[];
 };
 
 export type TroopCard = {
@@ -51,6 +52,7 @@ export type CatalogQuery = {
   condition?: string;
   maxPrice?: number;
   limit?: number;
+  page?: number;
 };
 
 export type Me = {
@@ -82,6 +84,7 @@ export type Me = {
     maxMembers: number;
     maxProducts: number;
     proof: string;
+    adminNote: string;
   };
   counts: { members: number; products: number };
   pendingProof: string | null;

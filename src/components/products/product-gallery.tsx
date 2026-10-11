@@ -1,20 +1,25 @@
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { useRef, useState } from "react";
+import { productImageUrl } from "@/lib/zad/image";
 import { ProductVisual } from "./product-visual";
 
 export default function ProductGallery({
     slug,
+    images = [],
     badge,
     rtl,
     label,
-    count = 4,
+    alt = "",
   }: {
     slug: string;
+    images?: string[];
     badge: string;
     rtl: boolean;
     label: { prev: string; next: string; gallery: string };
-    count?: number;
+    alt?: string;
   }) {
+    const photos = images.filter(Boolean);
+    const count = Math.max(photos.length, 1);
     const trackRef = useRef<HTMLDivElement>(null);
     const [index, setIndex] = useState(0);
   
@@ -45,11 +50,17 @@ export default function ProductGallery({
             onScroll={onScroll}
             className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {Array.from({ length: count }, (_, i) => (
-              <div key={i} className="w-full shrink-0 snap-center">
-                <ProductVisual slug={slug} className="aspect-4/3 w-full sm:aspect-[5/4]" />
-              </div>
-            ))}
+            {photos.length
+              ? photos.map((path) => (
+                  <div key={path} className="w-full shrink-0 snap-center">
+                    <img src={productImageUrl(path)} alt={alt} className="aspect-4/3 w-full object-cover sm:aspect-[5/4]" />
+                  </div>
+                ))
+              : (
+                  <div className="w-full shrink-0 snap-center">
+                    <ProductVisual slug={slug} className="aspect-4/3 w-full sm:aspect-[5/4]" />
+                  </div>
+                )}
           </div>
   
           <span className="pointer-events-none absolute inset-s-3 top-3 rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-white shadow-sm">
@@ -88,7 +99,11 @@ export default function ProductGallery({
                 i === index ? "border-2 border-accent p-0.5" : "border-border opacity-75 hover:opacity-100"
               }`}
             >
-              <ProductVisual slug={slug} className="aspect-square w-full" />
+              {photos.length ? (
+                <img src={productImageUrl(photos[i] ?? "")} alt="" className="aspect-square w-full object-cover" />
+              ) : (
+                <ProductVisual slug={slug} className="aspect-square w-full" />
+              )}
             </button>
           ))}
         </div>

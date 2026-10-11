@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
+import { productImageUrl, readProductImage } from "@/lib/zad/image";
 import { useT } from "@/lib/use-locale";
 import { saveProduct } from "@/lib/zad/api";
 import { parseMoney, productFieldErrors, productSchema } from "@/lib/zad/product";
@@ -38,6 +39,9 @@ export function ProductForm({
   const t = useT();
   const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [images, setImages] = useState<DraftImage[]>(() =>
+    (item?.images ?? []).map((path) => ({ key: path, src: productImageUrl(path), stored: path })),
+  );
 
   return (
     <form
@@ -55,6 +59,7 @@ export function ProductForm({
           salePrice: parseMoney(fd.get("salePrice")),
           rentPrice: parseMoney(fd.get("rentPrice")),
           wilayaCode: Number(fd.get("wilayaCode")),
+          images: images.map((image) => image.stored ?? image.src),
         });
         if (!parsed.success) {
           setErrors(productFieldErrors(parsed.error));
@@ -133,10 +138,109 @@ export function ProductForm({
           defaultValue={item?.description ?? ""}
         />
       </Field>
+      <ProductImages images={images} error={errors.images ? t(errors.images) : undefined} onChange={setImages} />
       <Button type="submit" disabled={pending || categories.length === 0}>
         {pending ? t("auth.pending") : t("gear.save")}
       </Button>
     </form>
+  );
+}
+
+type DraftImage = { key: string; src: string; stored?: string };
+
+function ProductImages({
+  images,
+  error,
+  onChange,
+}: {
+  images: DraftImage[];
+  error?: string;
+  onChange: (images: DraftImage[]) => void;
+}) {
+  const t = useT();
+
+  async function addFiles(list: FileList | null) {
+    const files = [...(list ?? [])];
+    if (!files.length) return;
+    if (images.length + files.length > 5) {
+      toast.error(t("gear.errImageCount"));
+      return;
+    }
+    const next = [...images];
+    for (const file of files) {
+      try {
+        const src = await readProductImage(file);
+        next.push({ key: crypto.randomUUID(), src });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "";
+        toast.error(t(code === "size" ? "gear.errImageSize" : "gear.errImageType"));
+      }
+    }
+    onChange(next);
+  }
+
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    const next = [...images];
+    const [item] = next.splice(index, 1);
+    if (item) next.splice(target, 0, item);
+    onChange(next);
+  }
+
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">{t("gear.images")}</legend>
+      <p className="text-sm text-muted">{t("gear.imagesHint")}</p>
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {images.map((image, index) => (
+          <div key={image.key} className="overflow-hidden rounded-xl border border-border bg-card">
+            <img src={image.src} alt="" className="aspect-4/3 w-full object-cover" />
+            <div className="grid grid-cols-3">
+              <button
+                type="button"
+                className="min-h-11 text-sm"
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              >
+                {t("gear.moveEarlier")}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 text-sm"
+                disabled={index === images.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                {t("gear.moveLater")}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 text-sm text-danger"
+                onClick={() => onChange(images.filter((item) => item.key !== image.key))}
+              >
+                {t("gear.removeImage")}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {images.length < 5 ? (
+        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-border bg-card px-4 text-sm font-medium">
+          {t("gear.addImages")}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              void addFiles(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+      ) : null}
+    </fieldset>
   );
 }
 

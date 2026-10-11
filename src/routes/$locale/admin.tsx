@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute, Link, Navigate, redirect } from "@tanstack/react-router";
+import { z } from "zod";
 import {
   Box,
   Calendar,
@@ -16,13 +17,17 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button, controlClass, Field } from "@/components/shared/controls";
+import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
+import { AdminPending } from "@/components/layout/route-pending";
+import { ErrorPage } from "@/components/layout/status-page";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";
 import {
   adminActivateSubscription,
+  adminRejectSubscription,
+  adminSuspendSubscription,
   adminHideProduct,
   adminOverview,
   adminResolveReport,
@@ -49,10 +54,22 @@ export const Route = createFileRoute("/$locale/admin")({
       throw error;
     }
   },
+  pendingMs: 0,
+  pendingMinMs: 200,
+  pendingComponent: AdminPending,
+  errorComponent: ErrorPage,
   component: AdminPage,
 });
 
 type Overview = Awaited<ReturnType<typeof adminOverview>>;
+
+type SubDecision = {
+  id: string;
+  troopName: string;
+  maxMembers: number;
+  maxProducts: number;
+  action: "activate" | "reject" | "suspend";
+};
 
 function AdminPage() {
   const { locale } = Route.useParams();
@@ -65,6 +82,7 @@ function AdminPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+  const [decision, setDecision] = useState<SubDecision | null>(null);
 
   function load() {
     return adminOverview({ data: { locale: account } }).then(setData);
@@ -94,12 +112,12 @@ function AdminPage() {
   }, [user, account]);
 
   if (isPending || (user && allowed === null)) {
-    return <div className="h-screen animate-pulse bg-[#f4f7f5]" />;
+    return <AdminPending />;
   }
   if (!user) return <Navigate to="/$locale/login" params={{ locale: account }} />;
   if (allowed === false) return <Navigate to="/$locale" params={{ locale: account }} />;
   if (!data) {
-    return <div className="h-screen animate-pulse bg-[#f4f7f5]" />;
+    return <AdminPending />;
   }
 
   function run(work: Promise<unknown>) {
@@ -116,6 +134,7 @@ function AdminPage() {
     active: "sub.statusActive",
     expired: "sub.statusExpired",
     suspended: "sub.statusSuspended",
+    rejected: "sub.statusRejected",
   } as const;
   const productStatus = {
     active: "gear.stActive",
@@ -152,22 +171,77 @@ function AdminPage() {
             cells: [
               <span key="name">
                 <span className="block font-medium">{sub.troopName}</span>
+                {sub.startsOn || sub.endsOn ? (
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {sub.startsOn ?? "—"} – {sub.endsOn ?? "—"}
+                  </span>
+                ) : null}
                 {sub.proof ? <span className="mt-0.5 block text-xs text-muted">{sub.proof}</span> : null}
+                {sub.adminNote ? <span className="mt-0.5 block text-xs text-muted">{sub.adminNote}</span> : null}
               </span>,
               t("sub.price", { amount: money.format(Number(sub.price)) }),
               t("admin.limits", { members: sub.maxMembers, products: sub.maxProducts }),
               <Badge key="s" tone={toneFor(sub.status)}>
                 {t(subStatus[sub.status as keyof typeof subStatus] ?? "sub.statusPending")}
               </Badge>,
+              <Badge key="pay" tone={sub.paidAt ? "green" : "amber"}>
+                {sub.paidAt ? t("admin.paidOn", { date: sub.paidAt.slice(0, 10) }) : t("admin.unpaid")}
+              </Badge>,
             ],
-            action:
-              sub.status !== "active" ? (
-                <Button type="button" onClick={() => run(adminActivateSubscription({ data: { id: sub.id } }))}>
-                  {t("admin.activate")}
-                </Button>
-              ) : (
-                <span className="text-sm text-muted">{sub.endsOn ? t("admin.until", { date: sub.endsOn }) : ""}</span>
-              ),
+            action: (
+              <span className="flex flex-wrap gap-2">
+                {sub.status !== "active" ? (
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      setDecision({
+                        id: sub.id,
+                        troopName: sub.troopName,
+                        maxMembers: sub.maxMembers,
+                        maxProducts: sub.maxProducts,
+                        action: "activate",
+                      })
+                    }
+                  >
+                    {t("admin.activate")}
+                  </Button>
+                ) : null}
+                {sub.status === "pending" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      setDecision({
+                        id: sub.id,
+                        troopName: sub.troopName,
+                        maxMembers: sub.maxMembers,
+                        maxProducts: sub.maxProducts,
+                        action: "reject",
+                      })
+                    }
+                  >
+                    {t("admin.reject")}
+                  </Button>
+                ) : null}
+                {sub.status === "active" ? (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={() =>
+                      setDecision({
+                        id: sub.id,
+                        troopName: sub.troopName,
+                        maxMembers: sub.maxMembers,
+                        maxProducts: sub.maxProducts,
+                        action: "suspend",
+                      })
+                    }
+                  >
+                    {t("admin.suspend")}
+                  </Button>
+                ) : null}
+              </span>
+            ),
           }))
       : tab === "products"
         ? data.products
@@ -289,7 +363,7 @@ function AdminPage() {
   const visible = rows.slice((safePage - 1) * 8, safePage * 8);
   const headers =
     tab === "subs"
-      ? [t("admin.colTroop"), t("admin.colPrice"), t("admin.colLimits"), t("admin.colStatus"), t("admin.colActions")]
+      ? [t("admin.colTroop"), t("admin.colPrice"), t("admin.colLimits"), t("admin.colStatus"), t("admin.colPayment"), t("admin.colActions")]
       : tab === "products"
         ? [t("admin.colProduct"), t("admin.colTroop"), t("admin.colStatus"), t("admin.colActions")]
         : tab === "reports"
@@ -305,7 +379,7 @@ function AdminPage() {
           : t("admin.tabTroops");
   const statusOptions =
     tab === "subs"
-      ? ["all", "pending", "active", "expired", "suspended"]
+      ? ["all", "pending", "active", "expired", "suspended", "rejected"]
       : tab === "products"
         ? ["all", "active", "unavailable", "hidden"]
         : tab === "reports"
@@ -542,6 +616,14 @@ function AdminPage() {
             </>
           )}
         </main>
+        <SubscriptionDialog
+          key={decision ? `${decision.id}-${decision.action}` : "none"}
+          target={decision}
+          onOpenChange={(open) => {
+            if (!open) setDecision(null);
+          }}
+          onDone={load}
+        />
       </div>
     </div>
   );
@@ -549,7 +631,7 @@ function AdminPage() {
 function toneFor(status: string): "green" | "blue" | "rose" | "amber" | "muted" {
   if (status === "active" || status === "resolved") return "green";
   if (status === "pending" || status === "open") return "blue";
-  if (status === "suspended" || status === "hidden" || status === "expired") return "rose";
+  if (status === "rejected" || status === "suspended" || status === "hidden" || status === "expired") return "rose";
   if (status === "unavailable") return "amber";
   return "muted";
 }
@@ -653,5 +735,133 @@ function PlanForm({ plan, onDone }: { plan: Plan; onDone: () => void }) {
         {pending ? t("auth.pending") : t("admin.savePlan")}
       </Button>
     </form>
+  );
+}
+
+const dayField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const optionalLimit = z.number().int().positive();
+
+const activateFormSchema = z
+  .object({
+    startsOn: dayField.optional(),
+    endsOn: dayField.optional(),
+    maxMembers: optionalLimit.optional(),
+    maxProducts: optionalLimit.optional(),
+  })
+  .refine((value) => !value.startsOn || !value.endsOn || value.endsOn >= value.startsOn);
+
+const noteFormSchema = z.object({
+  note: z.string().trim().min(1).max(500),
+});
+
+function optionalDay(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  return text ? text : undefined;
+}
+
+function optionalLimitField(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return undefined;
+  const amount = Number(text);
+  return Number.isInteger(amount) ? amount : Number.NaN;
+}
+
+function SubscriptionDialog({
+  target,
+  onOpenChange,
+  onDone,
+}: {
+  target: SubDecision | null;
+  onOpenChange: (open: boolean) => void;
+  onDone: () => Promise<void>;
+}) {
+  const t = useT();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const action = target?.action ?? "activate";
+  const title =
+    action === "reject" ? t("admin.rejectTitle") : action === "suspend" ? t("admin.suspendTitle") : t("admin.activateTitle");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!target) return;
+    const fd = new FormData(event.currentTarget);
+    setPending(true);
+    const work =
+      target.action === "activate"
+        ? Promise.resolve().then(() => {
+            const maxMembers = optionalLimitField(fd.get("maxMembers"));
+            const maxProducts = optionalLimitField(fd.get("maxProducts"));
+            if (typeof maxMembers === "number" && Number.isNaN(maxMembers)) throw new Error(t("admin.errMembers"));
+            if (typeof maxProducts === "number" && Number.isNaN(maxProducts)) throw new Error(t("admin.errProducts"));
+            const parsed = activateFormSchema.safeParse({
+              startsOn: optionalDay(fd.get("startsOn")),
+              endsOn: optionalDay(fd.get("endsOn")),
+              maxMembers,
+              maxProducts,
+            });
+            if (!parsed.success) throw new Error(t("admin.errDates"));
+            return adminActivateSubscription({ data: { id: target.id, ...parsed.data } }).then(() => t("admin.activated"));
+          })
+        : Promise.resolve().then(() => {
+            const parsed = noteFormSchema.safeParse({ note: fd.get("note") });
+            if (!parsed.success) throw new Error(t("admin.errNote"));
+            const call =
+              target.action === "reject"
+                ? adminRejectSubscription({ data: { id: target.id, note: parsed.data.note } })
+                : adminSuspendSubscription({ data: { id: target.id, note: parsed.data.note } });
+            return call.then(() => (target.action === "reject" ? t("admin.rejectedSub") : t("admin.suspendedSub")));
+          });
+    work
+      .then((message) => {
+        toast.success(message);
+        onOpenChange(false);
+        return onDone();
+      })
+      .catch((reason) => {
+        const message = reason instanceof Error ? reason.message : t("admin.failed");
+        setError(message);
+        toast.error(message);
+      })
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <Modal open={target !== null} onOpenChange={onOpenChange} title={title}>
+      <form className="flex flex-col gap-3" onSubmit={submit}>
+        <p className="text-sm text-muted">{target?.troopName}</p>
+        {action === "activate" ? (
+          <>
+            <Field label={t("admin.startsOn")}>
+              <input className={controlClass} name="startsOn" type="date" />
+            </Field>
+            <Field label={t("admin.endsOn")}>
+              <input className={controlClass} name="endsOn" type="date" />
+            </Field>
+            <p className="text-xs text-muted">{t("admin.datesHint")}</p>
+            <Field label={t("admin.maxMembers")}>
+              <input className={controlClass} name="maxMembers" type="number" min={1} defaultValue={target?.maxMembers} />
+            </Field>
+            <Field label={t("admin.maxProducts")}>
+              <input className={controlClass} name="maxProducts" type="number" min={1} defaultValue={target?.maxProducts} />
+            </Field>
+            <p className="text-xs text-muted">{t("admin.limitsHint")}</p>
+          </>
+        ) : (
+          <Field label={t("admin.note")}>
+            <textarea className={`${controlClass} min-h-24 py-2`} name="note" maxLength={500} required />
+          </Field>
+        )}
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>
+            {pending ? t("auth.pending") : t("admin.confirm")}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("admin.cancel")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,13 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ProductCard } from "@/components/products/product-card";
 import { Shell } from "@/components/layout/shell";
-import { isLocale } from "@/lib/i18n";
+import { isLocale, translate } from "@/lib/i18n";
+import { shareMeta } from "@/lib/seo";
 import { useT } from "@/lib/use-locale";
 import { getTroop } from "@/lib/zad/api";
 
 export const Route = createFileRoute("/$locale/troops_/$id")({
   loader: ({ params }) =>
     getTroop({ data: { id: params.id, locale: params.locale === "fr" ? "fr" : "ar" } }),
+  head: ({ loaderData, params }) => {
+    const locale = params.locale === "fr" ? "fr" : "ar";
+    const troop = loaderData?.troop;
+    const place = troop ? `${troop.wilayaName}${troop.commune ? ` · ${troop.commune}` : ""}` : "";
+    return shareMeta({
+      locale,
+      title: troop?.name ?? translate(locale, "troops.gone"),
+      description: troop?.about?.trim() || (place ? `${troop?.name ?? ""} — ${place}` : translate(locale, "meta.description")),
+      path: `/${locale}/troops/${params.id}`,
+      origin: loaderData?.origin ?? "",
+    });
+  },
   component: TroopPage,
 });
 

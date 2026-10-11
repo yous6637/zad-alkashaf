@@ -22,6 +22,8 @@ import { Route as LocaleAccountProductRouteImport } from './routes/$locale/accou
 import { Route as LocaleProductsIdRouteImport } from './routes/$locale/products_.$id'
 import { Route as LocaleTroopsIdRouteImport } from './routes/$locale/troops_.$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiProductImagesUploadRouteImport } from './routes/api/product-images/upload'
+import { Route as ApiProductImagesFileSplatRouteImport } from './routes/api/product-images/file.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -88,6 +90,17 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiProductImagesUploadRoute = ApiProductImagesUploadRouteImport.update({
+  id: '/api/product-images/upload',
+  path: '/api/product-images/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProductImagesFileSplatRoute =
+  ApiProductImagesFileSplatRouteImport.update({
+    id: '/api/product-images/file/$',
+    path: '/api/product-images/file/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -103,6 +116,8 @@ export interface FileRoutesByFullPath {
   '/$locale/products/$id': typeof LocaleProductsIdRoute
   '/$locale/troops/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/product-images/upload': typeof ApiProductImagesUploadRoute
+  '/api/product-images/file/$': typeof ApiProductImagesFileSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -117,6 +132,8 @@ export interface FileRoutesByTo {
   '/$locale/products/$id': typeof LocaleProductsIdRoute
   '/$locale/troops/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/product-images/upload': typeof ApiProductImagesUploadRoute
+  '/api/product-images/file/$': typeof ApiProductImagesFileSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -133,6 +150,8 @@ export interface FileRoutesById {
   '/$locale/products_/$id': typeof LocaleProductsIdRoute
   '/$locale/troops_/$id': typeof LocaleTroopsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/product-images/upload': typeof ApiProductImagesUploadRoute
+  '/api/product-images/file/$': typeof ApiProductImagesFileSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -150,6 +169,8 @@ export interface FileRouteTypes {
     | '/$locale/products/$id'
     | '/$locale/troops/$id'
     | '/api/auth/$'
+    | '/api/product-images/upload'
+    | '/api/product-images/file/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -164,6 +185,8 @@ export interface FileRouteTypes {
     | '/$locale/products/$id'
     | '/$locale/troops/$id'
     | '/api/auth/$'
+    | '/api/product-images/upload'
+    | '/api/product-images/file/$'
   id:
     | '__root__'
     | '/'
@@ -179,12 +202,16 @@ export interface FileRouteTypes {
     | '/$locale/products_/$id'
     | '/$locale/troops_/$id'
     | '/api/auth/$'
+    | '/api/product-images/upload'
+    | '/api/product-images/file/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LocaleRoute: typeof LocaleRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiProductImagesUploadRoute: typeof ApiProductImagesUploadRoute
+  ApiProductImagesFileSplatRoute: typeof ApiProductImagesFileSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -280,6 +307,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/product-images/upload': {
+      id: '/api/product-images/upload'
+      path: '/api/product-images/upload'
+      fullPath: '/api/product-images/upload'
+      preLoaderRoute: typeof ApiProductImagesUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/product-images/file/$': {
+      id: '/api/product-images/file/$'
+      path: '/api/product-images/file/$'
+      fullPath: '/api/product-images/file/$'
+      preLoaderRoute: typeof ApiProductImagesFileSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -316,6 +357,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LocaleRoute: LocaleRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiProductImagesUploadRoute: ApiProductImagesUploadRoute,
+  ApiProductImagesFileSplatRoute: ApiProductImagesFileSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
