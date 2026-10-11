@@ -295,7 +295,6 @@ export function UploadField() {
                   )}
                 >
                   {previews[0]?.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={previews[0].url}
                       alt="Avatar"
@@ -475,7 +474,6 @@ export function UploadField() {
                     )}
                   >
                     {file.url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={file.url}
                         alt={file.name}

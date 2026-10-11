@@ -9,6 +9,7 @@ import { planSchema } from "@/lib/zad/plan";
 import { productRefSchema, reportSchema } from "@/lib/zad/report";
 import { proofSchema } from "@/lib/zad/subscription";
 import { troopSchema } from "@/lib/zad/troop";
+import { visibleListing } from "@/lib/zad/visibility";
 import type { Category, Listing, Me, Plan, TroopCard, Wilaya } from "@/lib/zad/types";
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -32,6 +33,13 @@ function finishListing<T extends Listing>(row: T): T {
 
 function id() {
   return crypto.randomUUID();
+}
+
+async function countEvent(sql: Sql, key: "search" | "contact") {
+  await sql`
+    insert into platform_counters (key, value) values (${key}, 1)
+    on conflict (key) do update set value = platform_counters.value + 1
+  `;
 }
 
 function dbError(error: unknown): never {
@@ -83,13 +91,6 @@ function listingSelect(locale: "ar" | "fr" = "ar") {
   ), '[]'::json) as images
 `;
 }
-
-const visibleListing = `
-  p.visibility = 'public'
-  and p.status = 'active'
-  and t.status = 'active'
-  and has_active_subscription(t.id)
-`;
 
 export const getMeta = createServerFn({ method: "GET" })
   .validator((data: unknown) =>
@@ -183,6 +184,14 @@ export const listProducts = createServerFn({ method: "GET" })
         limit,
       ],
     );
+    const searched =
+      q.length > 0 ||
+      Boolean(data.categoryId) ||
+      data.wilayaCode != null ||
+      Boolean(data.operation) ||
+      Boolean(data.condition) ||
+      data.maxPrice != null;
+    if (searched) await countEvent(sql, "search");
     return rows.map(finishListing);
   });
 
@@ -924,6 +933,7 @@ export const getListingContact = createServerFn({ method: "GET" })
     );
     const row = rows[0];
     if (!row) return { status: "gone" as const };
+    await countEvent(sql, "contact");
     return { status: "ok" as const, phone: row.phone, email: row.email };
   });
 

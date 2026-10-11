@@ -135,6 +135,7 @@ export type ReportRow = {
   status: ReportStatus;
   handled_by: string | null;
   handled_at: string | null;
+  admin_note: string;
   created_at: string;
   updated_at: string;
 };

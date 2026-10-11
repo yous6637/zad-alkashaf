@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute, Link, Navigate, redirect } from "@tanstack/react-router";
 import { z } from "zod";
 import {
+  BarChart3,
   Box,
   Calendar,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Tags,
   Tent,
   Users,
   XCircle,
@@ -24,12 +26,12 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
 import { useT } from "@/lib/use-locale";
+import { adminDismissReport, adminListCategories, adminPage, adminReorderCategories, adminSaveCategory, adminStats } from "@/lib/zad/admin";
 import {
   adminActivateSubscription,
   adminRejectSubscription,
   adminSuspendSubscription,
   adminHideProduct,
-  adminOverview,
   adminResolveReport,
   adminSetTroopStatus,
   adminUpdatePlan,
@@ -61,7 +63,15 @@ export const Route = createFileRoute("/$locale/admin")({
   component: AdminPage,
 });
 
-type Overview = Awaited<ReturnType<typeof adminOverview>>;
+type PageData = Awaited<ReturnType<typeof adminPage>>;
+type Stats = Awaited<ReturnType<typeof adminStats>>;
+type CategoryRow = Awaited<ReturnType<typeof adminListCategories>>[number];
+type Tab = "troops" | "subs" | "products" | "reports" | "categories" | "stats" | "plan";
+type ListTab = "troops" | "subs" | "products" | "reports";
+
+function isListTab(value: Tab): value is ListTab {
+  return value === "troops" || value === "subs" || value === "products" || value === "reports";
+}
 
 type SubDecision = {
   id: string;
@@ -77,15 +87,42 @@ function AdminPage() {
   const t = useT();
   const { user, isPending } = useCurrentUserState();
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [data, setData] = useState<Overview | null>(null);
-  const [tab, setTab] = useState<"troops" | "subs" | "products" | "reports" | "plan">("troops");
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [list, setList] = useState<{ resource: ListTab; data: PageData } | null>(null);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [tab, setTab] = useState<Tab>("troops");
+  const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [decision, setDecision] = useState<SubDecision | null>(null);
+  const [dismissing, setDismissing] = useState<{ id: string; title: string } | null>(null);
+  const [editingCategory, setEditingCategory] = useState<CategoryRow | "new" | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [loadingList, setLoadingList] = useState(false);
+  const generation = useRef(0);
 
-  function load() {
-    return adminOverview({ data: { locale: account } }).then(setData);
+  function reload() {
+    const id = ++generation.current;
+    const listed = isListTab(tab);
+    if (listed) setLoadingList(true);
+    return Promise.all([
+      adminStats({ data: { locale: account } }),
+      tab === "categories" ? adminListCategories() : listed ? adminPage({ data: { resource: tab, q: query, status, page, locale: account } }) : Promise.resolve(null),
+    ])
+      .then(([nextStats, extra]) => {
+        if (id !== generation.current) return;
+        setStats(nextStats);
+        setLoadError(false);
+        if (tab === "categories" && Array.isArray(extra)) setCategories(extra);
+        if (listed && extra && !Array.isArray(extra)) setList({ resource: tab, data: extra });
+        setLoadingList(false);
+      })
+      .catch((error) => {
+        if (id === generation.current) setLoadingList(false);
+        throw error;
+      });
   }
 
   useEffect(() => {
@@ -98,9 +135,6 @@ function AdminPage() {
           setAllowed(false);
           return;
         }
-        const next = await adminOverview({ data: { locale: account } });
-        if (cancel) return;
-        setData(next);
         setAllowed(true);
       })
       .catch(() => {
@@ -109,19 +143,89 @@ function AdminPage() {
     return () => {
       cancel = true;
     };
-  }, [user, account]);
+  }, [user]);
 
-  if (isPending || (user && allowed === null)) {
+  useEffect(() => {
+    if (allowed !== true) return;
+    let cancel = false;
+    reload().catch((error) => {
+      if (cancel) return;
+      setLoadError(true);
+      toast.error(error instanceof Error ? error.message : t("admin.failed"));
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [allowed, tab, query, status, page, account]);
+
+  useEffect(() => {
+    if (!list || list.resource !== tab) return;
+    const last = Math.max(1, Math.ceil(list.data.total / list.data.pageSize));
+    if (page > last) setPage(last);
+  }, [list, tab, page]);
+
+  if (isPending || (user && allowed === null) || (allowed === true && !stats && !loadError)) {
     return <AdminPending />;
   }
   if (!user) return <Navigate to="/$locale/login" params={{ locale: account }} />;
   if (allowed === false) return <Navigate to="/$locale" params={{ locale: account }} />;
-  if (!data) {
-    return <AdminPending />;
+  if (!stats) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7f5] px-4">
+        <div className="max-w-md rounded-2xl border border-border bg-white p-8 text-center">
+          <h1 className="text-xl font-semibold">{t("errors.errorTitle")}</h1>
+          <p className="mt-2 text-sm text-muted">{t("errors.errorBody")}</p>
+          <Button
+            type="button"
+            className="mt-4"
+            onClick={() => {
+              setLoadError(false);
+              reload().catch(() => setLoadError(true));
+            }}
+          >
+            {t("errors.retry")}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   function run(work: Promise<unknown>) {
-    work.then(() => load()).catch((error) => toast.error(error instanceof Error ? error.message : t("admin.failed")));
+    setBusy(true);
+    work
+      .then(() => reload())
+      .catch((error) => toast.error(error instanceof Error ? error.message : t("admin.failed")))
+      .finally(() => setBusy(false));
+  }
+
+  function submitSearch(event: FormEvent) {
+    event.preventDefault();
+    const next = draft.trim();
+    if (!isListTab(tab)) setTab("troops");
+    if (next === query && page === 1 && isListTab(tab)) {
+      reload().catch((error) => toast.error(error instanceof Error ? error.message : t("admin.failed")));
+      return;
+    }
+    setPage(1);
+    setQuery(next);
+  }
+
+  function choose(next: Tab) {
+    setTab(next);
+    setDraft("");
+    setQuery("");
+    setStatus("all");
+    setPage(1);
+  }
+
+  function moveCategory(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= categories.length) return;
+    const next = categories.slice();
+    const [item] = next.splice(index, 1);
+    if (!item) return;
+    next.splice(target, 0, item);
+    run(adminReorderCategories({ data: { ids: next.map((category) => category.id) } }));
   }
 
   const troopStatus = {
@@ -157,16 +261,12 @@ function AdminPage() {
     year: "numeric",
   }).format(now);
   const timeLabel = new Intl.DateTimeFormat(dateLocale, { hour: "2-digit", minute: "2-digit" }).format(now);
-  const needle = query.trim();
-  const pendingTroops = data.troops.filter((troop) => troop.status === "pending").length;
-  const activeTroops = data.troops.filter((troop) => troop.status === "active").length;
-  const openReports = data.reports.filter((report) => report.status === "open").length;
+  const listReady = isListTab(tab) && list?.resource === tab;
+  const pageRows = listReady && list ? list.data : { total: 0, pageSize: 8, troops: [], subs: [], products: [], reports: [] };
 
   const rows: { id: string; cells: ReactNode[]; action: ReactNode }[] =
     tab === "subs"
-      ? data.subs
-          .filter((sub) => (!needle || sub.troopName.includes(needle)) && (status === "all" || sub.status === status))
-          .map((sub) => ({
+      ? pageRows.subs.map((sub) => ({
             id: sub.id,
             cells: [
               <span key="name">
@@ -244,14 +344,7 @@ function AdminPage() {
             ),
           }))
       : tab === "products"
-        ? data.products
-            .filter(
-              (product) =>
-                (!needle || `${product.title} ${product.troopName}`.includes(needle)) &&
-                (status === "all" ||
-                  (status === "hidden" ? product.visibility === "hidden" : product.status === status && product.visibility !== "hidden")),
-            )
-            .map((product) => ({
+        ? pageRows.products.map((product) => ({
               id: product.id,
               cells: [
                 product.title,
@@ -275,30 +368,47 @@ function AdminPage() {
               ),
             }))
         : tab === "reports"
-          ? data.reports
-              .filter(
-                (report) =>
-                  (!needle || `${report.productTitle} ${report.note}`.includes(needle)) &&
-                  (status === "all" || report.status === status),
-              )
-              .map((report) => ({
+          ? pageRows.reports.map((report) => ({
                 id: report.id,
                 cells: [
-                  report.productTitle,
+                  <span key="product">
+                    <span className="block font-medium">{report.productTitle}</span>
+                    {report.note ? <span className="mt-0.5 block max-w-xs text-xs text-muted">{report.note}</span> : null}
+                    {report.adminNote ? (
+                      <span className="mt-0.5 block max-w-xs text-xs text-muted">
+                        {t("admin.reportNote")}: {report.adminNote}
+                      </span>
+                    ) : null}
+                  </span>,
                   t(reasonKey[report.reason as keyof typeof reasonKey] ?? "product.reasonOther"),
-                  <Badge key="r" tone={report.status === "open" ? "blue" : "green"}>
-                    {report.status === "open" ? t("admin.open") : t("admin.resolved")}
+                  <Badge key="r" tone={toneFor(report.status)}>
+                    {report.status === "dismissed" ? t("admin.dismissed") : report.status === "open" ? t("admin.open") : t("admin.resolved")}
                   </Badge>,
                 ],
                 action: (
-                  <span className="flex gap-2">
+                  <span className="flex flex-wrap gap-2">
                     {report.productVisibility !== "hidden" ? (
                       <Button
                         type="button"
                         variant="danger"
-                        onClick={() => run(adminHideProduct({ data: { id: report.productId, hidden: true } }))}
+                        onClick={() =>
+                          run(
+                            adminHideProduct({ data: { id: report.productId, hidden: true } }).then(() => {
+                              toast.success(t("admin.hiddenOk"));
+                            }),
+                          )
+                        }
                       >
                         {t("admin.hide")}
+                      </Button>
+                    ) : null}
+                    {report.status === "open" ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setDismissing({ id: report.id, title: report.productTitle })}
+                      >
+                        {t("admin.dismiss")}
                       </Button>
                     ) : null}
                     {report.status === "open" ? (
@@ -309,13 +419,7 @@ function AdminPage() {
                   </span>
                 ),
               }))
-          : data.troops
-              .filter(
-                (troop) =>
-                  (!needle || `${troop.name} ${troop.wilayaName}`.includes(needle)) &&
-                  (status === "all" || troop.status === status),
-              )
-              .map((troop) => ({
+          : pageRows.troops.map((troop) => ({
                 id: troop.id,
                 cells: [
                   troop.name,
@@ -358,9 +462,10 @@ function AdminPage() {
                 ),
               }));
 
-  const pageCount = Math.max(1, Math.ceil(rows.length / 8));
-  const safePage = Math.min(page, pageCount);
-  const visible = rows.slice((safePage - 1) * 8, safePage * 8);
+  const pageSize = pageRows.pageSize || 8;
+  const total = listReady ? pageRows.total : 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const visible = rows;
   const headers =
     tab === "subs"
       ? [t("admin.colTroop"), t("admin.colPrice"), t("admin.colLimits"), t("admin.colStatus"), t("admin.colPayment"), t("admin.colActions")]
@@ -383,12 +488,13 @@ function AdminPage() {
       : tab === "products"
         ? ["all", "active", "unavailable", "hidden"]
         : tab === "reports"
-          ? ["all", "open", "resolved"]
+          ? ["all", "open", "resolved", "dismissed"]
           : ["all", "pending", "active", "suspended"];
   const statusLabel = (value: string) => {
     if (value === "all") return t("admin.filterAll");
     if (value === "open") return t("admin.open");
     if (value === "resolved") return t("admin.resolved");
+    if (value === "dismissed") return t("admin.dismissed");
     if (value === "hidden") return t("gear.stHidden");
     if (value in productStatus && tab === "products") return t(productStatus[value as keyof typeof productStatus]);
     if (value in subStatus && tab === "subs") return t(subStatus[value as keyof typeof subStatus]);
@@ -404,18 +510,13 @@ function AdminPage() {
           ? t("admin.emptyReports")
           : t("admin.emptyTroops");
 
-  function choose(next: typeof tab) {
-    setTab(next);
-    setQuery("");
-    setStatus("all");
-    setPage(1);
-  }
-
   const nav = [
     ["troops", "admin.title", LayoutDashboard],
     ["subs", "admin.tabSubs", Users],
     ["products", "admin.tabProducts", Package],
     ["reports", "admin.tabReports", Flag],
+    ["categories", "admin.tabCategories", Tags],
+    ["stats", "admin.tabStats", BarChart3],
     ["plan", "admin.tabPlan", Settings],
   ] as const;
 
@@ -448,18 +549,18 @@ function AdminPage() {
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex items-center gap-3 border-b border-border/70 bg-white px-4 py-3">
-          <label className="relative ms-auto hidden max-w-md flex-1 sm:block">
+          <form className="relative ms-auto hidden max-w-md flex-1 sm:block" onSubmit={submitSearch}>
             <Search className="pointer-events-none absolute inset-y-0 end-3 my-auto size-4 text-muted" aria-hidden="true" />
             <input
               className="h-11 w-full rounded-full border border-border bg-[#f7f8f6] pe-10 ps-4 text-sm"
-              value={query}
+              value={draft}
               placeholder={t("admin.search")}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => setDraft(event.target.value)}
             />
-          </label>
+            <button type="submit" className="sr-only">
+              {t("admin.search")}
+            </button>
+          </form>
           <div className="flex items-center gap-2">
             <span className="flex size-9 items-center justify-center rounded-full bg-[#e7f6ee] text-[#167944]">
               <Users className="size-4" aria-hidden="true" />
@@ -505,26 +606,31 @@ function AdminPage() {
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label={t("admin.statPending")} value={String(pendingTroops)} tone="blue" icon={<Clock className="size-5" />} />
-            <StatCard label={t("admin.statActive")} value={String(activeTroops)} tone="green" icon={<CheckCircle2 className="size-5" />} />
-            <StatCard label={t("admin.statProducts")} value={String(data.products.length)} tone="amber" icon={<Box className="size-5" />} />
-            <StatCard label={t("admin.statReports")} value={String(openReports)} tone="rose" icon={<XCircle className="size-5" />} />
+            <StatCard label={t("admin.statPending")} value={String(stats.pendingTroops)} tone="blue" icon={<Clock className="size-5" />} />
+            <StatCard label={t("admin.statActive")} value={String(stats.activeTroops)} tone="green" icon={<CheckCircle2 className="size-5" />} />
+            <StatCard label={t("admin.statProducts")} value={String(stats.products)} tone="amber" icon={<Box className="size-5" />} />
+            <StatCard label={t("admin.statReports")} value={String(stats.reports.open)} tone="rose" icon={<XCircle className="size-5" />} />
           </div>
-          {tab === "plan" && data.plan ? (
-            <PlanForm plan={data.plan} onDone={() => load().catch(() => undefined)} />
+          {tab === "plan" ? (
+            stats.plan ? (
+              <PlanForm plan={stats.plan} onDone={() => reload().then(() => undefined)} />
+            ) : (
+              <p className="rounded-2xl border border-border bg-white p-4 text-sm text-muted">{t("admin.rateNone")}</p>
+            )
+          ) : tab === "stats" ? (
+            <StatsPanel stats={stats} />
+          ) : tab === "categories" ? (
+            <CategoriesPanel categories={categories} busy={busy} onEdit={setEditingCategory} onMove={moveCategory} />
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-white p-3">
+              <form className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-white p-3" onSubmit={submitSearch}>
                 <label className="relative min-w-48 flex-1">
                   <Search className="pointer-events-none absolute inset-y-0 end-3 my-auto size-4 text-muted" aria-hidden="true" />
                   <input
                     className="h-11 w-full rounded-full border border-border bg-[#f7f8f6] pe-10 ps-4 text-sm"
-                    value={query}
+                    value={draft}
                     placeholder={t("admin.search")}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(event) => setDraft(event.target.value)}
                   />
                 </label>
                 <label className="flex items-center gap-2 text-sm text-muted">
@@ -544,14 +650,16 @@ function AdminPage() {
                     ))}
                   </select>
                 </label>
-                <Button type="button" className="gap-2" onClick={() => load().catch(() => undefined)}>
+                <Button type="submit" className="gap-2" disabled={busy}>
                   <RefreshCw className="size-4" aria-hidden="true" />
                   {t("admin.refresh")}
                 </Button>
-              </div>
+              </form>
               <section className="overflow-hidden rounded-2xl border border-border bg-white">
                 <h2 className="px-4 py-4 text-lg font-semibold">{listTitle}</h2>
-                {visible.length ? (
+                {!listReady || loadingList ? (
+                  <p className="px-4 pb-4 text-sm text-muted">{t("auth.pending")}</p>
+                ) : visible.length ? (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[720px] text-sm">
                       <thead className="bg-[#f7f8f6] text-muted">
@@ -582,31 +690,31 @@ function AdminPage() {
                 )}
                 <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted">
                   <span>
-                    {rows.length
+                    {total
                       ? t("admin.showing", {
-                          from: (safePage - 1) * 8 + 1,
-                          to: Math.min(safePage * 8, rows.length),
-                          total: rows.length,
+                          from: (page - 1) * pageSize + 1,
+                          to: Math.min(page * pageSize, total),
+                          total,
                         })
                       : ""}
                   </span>
                   <span className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border"
-                      disabled={safePage <= 1}
-                      onClick={() => setPage(safePage - 1)}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border disabled:opacity-40"
+                      disabled={page <= 1}
+                      onClick={() => setPage(page - 1)}
                     >
                       ‹
                     </button>
                     <span className="inline-flex size-9 items-center justify-center rounded-lg bg-[#0f3d2e] text-white">
-                      {safePage}
+                      {page}
                     </span>
                     <button
                       type="button"
-                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border"
-                      disabled={safePage >= pageCount}
-                      onClick={() => setPage(safePage + 1)}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-border disabled:opacity-40"
+                      disabled={page >= pageCount}
+                      onClick={() => setPage(page + 1)}
                     >
                       ›
                     </button>
@@ -622,7 +730,23 @@ function AdminPage() {
           onOpenChange={(open) => {
             if (!open) setDecision(null);
           }}
-          onDone={load}
+          onDone={() => reload()}
+        />
+        <DismissDialog
+          key={dismissing?.id ?? "dismiss-none"}
+          target={dismissing}
+          onOpenChange={(open) => {
+            if (!open) setDismissing(null);
+          }}
+          onDone={() => reload()}
+        />
+        <CategoryDialog
+          key={editingCategory === "new" ? "category-new" : (editingCategory?.id ?? "category-none")}
+          target={editingCategory}
+          onOpenChange={(open) => {
+            if (!open) setEditingCategory(null);
+          }}
+          onDone={() => reload()}
         />
       </div>
     </div>
@@ -863,5 +987,252 @@ function SubscriptionDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function DismissDialog({
+  target,
+  onOpenChange,
+  onDone,
+}: {
+  target: { id: string; title: string } | null;
+  onOpenChange: (open: boolean) => void;
+  onDone: () => Promise<unknown>;
+}) {
+  const t = useT();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!target) return;
+    const parsed = noteFormSchema.safeParse({ note: new FormData(event.currentTarget).get("note") });
+    if (!parsed.success) {
+      setError(t("admin.errNote"));
+      return;
+    }
+    setError("");
+    setPending(true);
+    adminDismissReport({ data: { id: target.id, note: parsed.data.note } })
+      .then(() => {
+        toast.success(t("admin.dismissedOk"));
+        onOpenChange(false);
+        return onDone();
+      })
+      .catch((reason) => {
+        const message = reason instanceof Error ? reason.message : t("admin.failed");
+        setError(message);
+        toast.error(message);
+      })
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <Modal open={target !== null} onOpenChange={onOpenChange} title={t("admin.dismissTitle")}>
+      <form className="flex flex-col gap-3" onSubmit={submit}>
+        <p className="text-sm text-muted">{target?.title}</p>
+        <Field label={t("admin.reportNote")} error={error || undefined}>
+          <textarea className={`${controlClass} min-h-24 py-2`} name="note" maxLength={500} required />
+        </Field>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>
+            {pending ? t("auth.pending") : t("admin.confirm")}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("admin.cancel")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function CategoryDialog({
+  target,
+  onOpenChange,
+  onDone,
+}: {
+  target: CategoryRow | "new" | null;
+  onOpenChange: (open: boolean) => void;
+  onDone: () => Promise<unknown>;
+}) {
+  const t = useT();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const current = target && target !== "new" ? target : null;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!target) return;
+    const fd = new FormData(event.currentTarget);
+    const slug = String(fd.get("slug") ?? "").trim().toLowerCase();
+    const nameAr = String(fd.get("nameAr") ?? "").trim();
+    const nameFr = String(fd.get("nameFr") ?? "").trim();
+    const isActive = fd.get("isActive") === "on";
+    const slugOk = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length <= 40;
+    if (!slugOk || nameAr.length < 2 || nameAr.length > 80 || nameFr.length < 2 || nameFr.length > 80) {
+      setError(t("auth.invalid"));
+      return;
+    }
+    setError("");
+    setPending(true);
+    adminSaveCategory({
+      data: current
+        ? { id: current.id, slug, nameAr, nameFr, isActive }
+        : { slug, nameAr, nameFr, isActive },
+    })
+      .then(() => {
+        toast.success(t("admin.categorySaved"));
+        onOpenChange(false);
+        return onDone();
+      })
+      .catch((reason) => {
+        const message = reason instanceof Error ? reason.message : t("admin.failed");
+        setError(message);
+        toast.error(message);
+      })
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <Modal open={target !== null} onOpenChange={onOpenChange} title={current ? t("admin.categoryEdit") : t("admin.categoryNew")}>
+      <form className="flex flex-col gap-3" onSubmit={submit}>
+        <Field label={t("admin.categorySlug")}>
+          <input className={controlClass} name="slug" defaultValue={current?.slug ?? ""} maxLength={40} required />
+        </Field>
+        <Field label={t("admin.categoryAr")}>
+          <input className={controlClass} name="nameAr" defaultValue={current?.nameAr ?? ""} maxLength={80} required />
+        </Field>
+        <Field label={t("admin.categoryFr")}>
+          <input className={controlClass} name="nameFr" defaultValue={current?.nameFr ?? ""} maxLength={80} required />
+        </Field>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="isActive" defaultChecked={current ? current.isActive : true} className="size-4" />
+          {t("admin.categoryActive")}
+        </label>
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pending}>
+            {pending ? t("auth.pending") : t("admin.confirm")}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("admin.cancel")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function CategoriesPanel({
+  categories,
+  busy,
+  onEdit,
+  onMove,
+}: {
+  categories: CategoryRow[];
+  busy: boolean;
+  onEdit: (category: CategoryRow | "new") => void;
+  onMove: (index: number, delta: number) => void;
+}) {
+  const t = useT();
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+        <h2 className="text-lg font-semibold">{t("admin.tabCategories")}</h2>
+        <Button type="button" onClick={() => onEdit("new")}>
+          {t("admin.categoryNew")}
+        </Button>
+      </div>
+      {categories.length ? (
+        <ul>
+          {categories.map((category, index) => (
+            <li key={category.id} className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">
+                  {category.nameAr}
+                  <span className="text-muted"> · {category.nameFr}</span>
+                </p>
+                <p className="mt-0.5 text-xs text-muted">
+                  {category.slug} · {t("admin.categoryProducts", { count: category.products })}
+                </p>
+              </div>
+              {category.isActive ? <Badge tone="green">{t("admin.categoryActive")}</Badge> : null}
+              <Button type="button" variant="ghost" disabled={busy || index === 0} onClick={() => onMove(index, -1)}>
+                {t("admin.moveEarlier")}
+              </Button>
+              <Button type="button" variant="ghost" disabled={busy || index === categories.length - 1} onClick={() => onMove(index, 1)}>
+                {t("admin.moveLater")}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => onEdit(category)}>
+                {t("admin.categoryEdit")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-4 pb-4 text-sm text-muted">{t("admin.emptyCategories")}</p>
+      )}
+    </section>
+  );
+}
+
+function StatsPanel({ stats }: { stats: Stats }) {
+  const t = useT();
+  const rate = (value: number | null, part: number, whole: number) =>
+    value == null ? t("admin.rateNone") : t("admin.rateValue", { rate: value, part, whole });
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <StatCard label={t("admin.statRegistered")} value={String(stats.troops)} tone="green" icon={<Tent className="size-5" />} />
+        <StatCard label={t("admin.statProductsAll")} value={String(stats.products)} tone="amber" icon={<Package className="size-5" />} />
+        <StatCard label={t("admin.statMonthly")} value={String(stats.activeTroops)} tone="blue" icon={<Users className="size-5" />} />
+        <StatCard label={t("admin.statSearches")} value={String(stats.searches)} tone="blue" icon={<Search className="size-5" />} />
+        <StatCard label={t("admin.statContacts")} value={String(stats.contacts)} tone="green" icon={<CheckCircle2 className="size-5" />} />
+        <StatCard label={t("admin.statProblems")} value={String(stats.reports.total)} tone="rose" icon={<Flag className="size-5" />} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className="rounded-2xl border border-border bg-white p-4">
+          <h2 className="text-sm text-muted">{t("admin.statPayment")}</h2>
+          <p className="mt-1 text-2xl font-semibold">{rate(stats.paymentRate, stats.paid, stats.billable)}</p>
+        </section>
+        <section className="rounded-2xl border border-border bg-white p-4">
+          <h2 className="text-sm text-muted">{t("admin.statRenewal")}</h2>
+          <p className="mt-1 text-2xl font-semibold">{rate(stats.renewalRate, stats.renewed, stats.expiredTroops)}</p>
+        </section>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <RankList title={t("admin.statTopCategories")} rows={stats.categories} />
+        <RankList title={t("admin.statTopWilayas")} rows={stats.wilayas} />
+      </div>
+      <p className="text-sm text-muted">
+        {t("admin.statOpen", { count: stats.reports.open })}
+        {" · "}
+        {t("admin.statResolved", { count: stats.reports.resolved })}
+        {" · "}
+        {t("admin.statDismissed", { count: stats.reports.dismissed })}
+      </p>
+    </div>
+  );
+}
+
+function RankList({ title, rows }: { title: string; rows: { name: string; count: number }[] }) {
+  const t = useT();
+  return (
+    <section className="rounded-2xl border border-border bg-white p-4">
+      <h2 className="font-semibold">{title}</h2>
+      {rows.length ? (
+        <ol className="mt-3 space-y-2">
+          {rows.map((row) => (
+            <li key={row.name} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">{row.name}</span>
+              <span className="tabular-nums text-muted">{row.count}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-3 text-sm text-muted">{t("admin.rateNone")}</p>
+      )}
+    </section>
   );
 }
