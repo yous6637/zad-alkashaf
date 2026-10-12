@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Calendar, Flag, MapPin, MessageCircle, Share2, Tent } from "lucide-react";
+import { Calendar, Copy, Flag, MapPin, MessageCircle, Phone, Share2, Tent } from "lucide-react";
 import { toast } from "sonner";
 import { ProductCard } from "@/components/products/product-card";
 import ProductGallery from "@/components/products/product-gallery";
+import { ProductPending } from "@/components/layout/route-pending";
+import { ErrorPage } from "@/components/layout/status-page";
 import { Shell } from "@/components/layout/shell";
 import { Button, controlClass, Field, Modal } from "@/components/shared/controls";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { isLocale } from "@/lib/i18n";
+import { isLocale, translate } from "@/lib/i18n";
+import { shareMeta } from "@/lib/seo";
 import { useT } from "@/lib/use-locale";
 import { getListingContact, getProduct, sendReport } from "@/lib/zad/api";
 import { reportFieldErrors, reportSchema } from "@/lib/zad/report";
@@ -32,6 +35,22 @@ type ContactState =
 export const Route = createFileRoute("/$locale/products_/$id")({
   loader: ({ params }) =>
     getProduct({ data: { id: params.id, locale: params.locale === "fr" ? "fr" : "ar" } }),
+  head: ({ loaderData, params }) => {
+    const locale = params.locale === "fr" ? "fr" : "ar";
+    const item = loaderData?.item;
+    return shareMeta({
+      locale,
+      title: item?.title ?? translate(locale, "product.goneTitle"),
+      description: item?.description?.trim() || translate(locale, "meta.description"),
+      path: `/${locale}/products/${params.id}`,
+      origin: loaderData?.origin ?? "",
+      type: "product",
+    });
+  },
+  pendingMs: 0,
+  pendingMinMs: 200,
+  pendingComponent: ProductPending,
+  errorComponent: ErrorPage,
   component: ProductPage,
 });
 
@@ -171,7 +190,7 @@ function ProductBody({
       : item.condition === "needs_repair"
         ? "home.condRepair"
         : "home.condUsed";
-  const formattedDate = item.createdAt;
+  const formattedDate = formatPublishDate(item.createdAt, account);
 
   return (
     <>
@@ -251,6 +270,8 @@ function ProductBody({
         <div className="order-1 min-w-0 lg:order-2">
           <ProductGallery
             slug={item.categorySlug}
+            images={item.images}
+            alt={item.title}
             badge={t(shortCondition)}
             rtl={account === "ar"}
             label={
@@ -294,7 +315,8 @@ function ProductBody({
             </div>
             <div className="px-1">
               <Calendar className="mx-auto size-5 text-accent" aria-hidden="true" />
-              <span className="mt-2 block text-xs font-medium">{t("product.addedOn")}</span>
+              <span className="mt-2 block text-xs font-medium">{formattedDate}</span>
+              <span className="mt-1 block text-[11px] text-muted">{t("product.addedOn")}</span>
             </div>
           </div>
           <p className="mt-5 line-clamp-4 leading-7 text-muted">{item.description}</p>
@@ -390,16 +412,25 @@ function ProductBody({
         ) : !signedIn ? (
           <div className="space-y-3">
             <p className="text-sm text-muted">{t("product.signIn")}</p>
-            <Link
-              to="/$locale/login"
-              params={{ locale: account }}
-              className="inline-flex h-11 items-center text-sm font-medium text-accent"
-            >
-              {t("product.login")}
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to="/$locale/login"
+                params={{ locale: account }}
+                className="inline-flex h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg"
+              >
+                {t("product.login")}
+              </Link>
+              <Link
+                to="/$locale/register"
+                params={{ locale: account }}
+                className="inline-flex h-11 items-center rounded-lg border border-border bg-card px-4 text-sm font-medium"
+              >
+                {t("product.registerTroop")}
+              </Link>
+            </div>
           </div>
         ) : mode === "contact" ? (
-          <ContactDetails contact={contact} />
+          <ContactDetails contact={contact} locale={account} />
         ) : (
           <form
             className="space-y-3"
@@ -451,13 +482,25 @@ function ProductBody({
   );
 }
 
-function ContactDetails({ contact }: { contact: ContactState }) {
+function ContactDetails({ contact, locale }: { contact: ContactState; locale: "ar" | "fr" }) {
   const t = useT();
   if (contact.status === "idle" || contact.status === "loading") {
     return <div className="h-16 animate-pulse rounded-md bg-surface" />;
   }
-  if (contact.status === "need_troop")
-    return <p className="text-sm text-muted">{t("product.needTroop")}</p>;
+  if (contact.status === "need_troop") {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted">{t("product.needTroop")}</p>
+        <Link
+          to="/$locale/account"
+          params={{ locale }}
+          className="inline-flex h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg"
+        >
+          {t("product.openAccount")}
+        </Link>
+      </div>
+    );
+  }
   if (contact.status === "gone")
     return <p className="text-sm text-muted">{t("product.goneBody")}</p>;
   if (contact.status === "error")
@@ -467,31 +510,77 @@ function ContactDetails({ contact }: { contact: ContactState }) {
   const phone = /^[0-9+\s()-]{6,20}$/.test(contact.phone) ? contact.phone : "";
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) ? contact.email : "";
   if (!phone && !email) return <p className="text-sm text-muted">{t("product.noContact")}</p>;
+  const whatsapp = phone ? whatsAppNumber(phone) : "";
   return (
     <div className="space-y-3 text-sm">
+      <p className="text-muted">{t("product.contactReady")}</p>
       {phone ? (
         <p>
           <span className="text-muted">{t("product.phone")}</span>
-          <a
-            href={`tel:${phone}`}
-            dir="ltr"
-            className="ms-2 inline-flex h-11 items-center font-medium text-accent"
-          >
+          <span dir="ltr" className="ms-2 font-medium">
             {phone}
-          </a>
+          </span>
         </p>
       ) : null}
       {email ? (
         <p>
           <span className="text-muted">{t("product.email")}</span>
-          <a
-            href={`mailto:${email}`}
-            className="ms-2 inline-flex h-11 items-center font-medium text-accent"
-          >
+          <a href={`mailto:${email}`} className="ms-2 inline-flex min-h-11 items-center font-medium text-accent">
             {email}
           </a>
         </p>
       ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            const value = phone || email;
+            const write = navigator.clipboard?.writeText(value);
+            if (!write) return;
+            write.then(() => toast.success(t(phone ? "product.copiedPhone" : "product.copied"))).catch(() => undefined);
+          }}
+        >
+          <Copy className="size-4" aria-hidden="true" />
+          {t(phone ? "product.copyPhone" : "product.copyEmail")}
+        </Button>
+        {phone ? (
+          <a
+            href={`tel:${phone}`}
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg"
+          >
+            <Phone className="size-4" aria-hidden="true" />
+            {t("product.call")}
+          </a>
+        ) : null}
+        {whatsapp ? (
+          <a
+            href={`https://wa.me/${whatsapp}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            {t("product.whatsapp")}
+          </a>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function formatPublishDate(value: string, locale: "ar" | "fr") {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-DZ" : "fr-DZ", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function whatsAppNumber(phone: string) {
+  let digits = phone.replace(/[^\d]/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0")) digits = `213${digits.slice(1)}`;
+  return /^[1-9]\d{7,14}$/.test(digits) ? digits : "";
 }

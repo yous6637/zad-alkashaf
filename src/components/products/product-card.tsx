@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { MapPin, Users } from "lucide-react";
 import { ProductVisual } from "@/components/products/product-visual";
+import { productImageUrl } from "@/lib/zad/image";
 import { formatListingPrice, listingConditionKey } from "@/lib/zad/listing-price";
 import { useLocale, useT } from "@/lib/use-locale";
 import type { Listing } from "@/lib/zad/types";
@@ -19,7 +20,11 @@ export function ProductCard({ item }: { item: Listing }) {
       className="group overflow-hidden rounded-2xl bg-card shadow-[0_8px_24px_rgba(18,56,44,0.06)] ring-1 ring-border transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(18,56,44,0.1)]"
     >
       <div className="relative">
-        <ProductVisual slug={item.categorySlug} className="h-40 w-full" />
+        {item.images[0] ? (
+          <img src={productImageUrl(item.images[0])} alt="" className="h-40 w-full object-cover" />
+        ) : (
+          <ProductVisual slug={item.categorySlug} className="h-40 w-full" />
+        )}
         <span className={`absolute top-3 start-3 rounded-full px-2.5 py-1 text-xs font-medium text-white ${badge}`}>
           {condition}
         </span>

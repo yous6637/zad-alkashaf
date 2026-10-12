@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link, Navigate, redirect, useNavigate } from "@tanstack/react-router";
+import { defineSchema } from "@buildnbuzz/form-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Form, FormContent, FormFields, FormSubmit } from "@/components/buzzform/form";
+import { registry } from "@/components/buzzform/registry";
 import { Shell } from "@/components/layout/shell";
-import { Button, controlClass, Field } from "@/components/shared/controls";
+import { Button } from "@/components/shared/controls";
 import { authClient, authEnabled, GROK_PROVIDERS, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { isLocale, translate } from "@/lib/i18n";
@@ -28,6 +31,30 @@ function LoginPage() {
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);
   const account = isLocale(locale) ? locale : "ar";
+  const schema = useMemo(
+    () =>
+      defineSchema({
+        fields: [
+          {
+            type: "email",
+            name: "email",
+            label: t("auth.email"),
+            required: true,
+            autoComplete: "email",
+          },
+          {
+            type: "password",
+            name: "password",
+            label: t("auth.password"),
+            required: true,
+            minLength: 8,
+            maxLength: 72,
+            autoComplete: "current-password",
+          },
+        ],
+      }),
+    [account],
+  );
 
   if (isPending) {
     return (
@@ -38,31 +65,6 @@ function LoginPage() {
   }
   if (user) return <Navigate to="/$locale/account" params={{ locale: account }} />;
 
-  async function onSubmit(form: HTMLFormElement) {
-    const parsed = loginSchema.safeParse({
-      email: String(new FormData(form).get("email") ?? ""),
-      password: String(new FormData(form).get("password") ?? ""),
-    });
-    if (!parsed.success) {
-      toast.error(t("auth.invalid"));
-      return;
-    }
-    setPending(true);
-    try {
-      const result = await authClient.signIn.email({
-        email: parsed.data.email,
-        password: parsed.data.password,
-        callbackURL: `/${account}/account`,
-      });
-      if (result.error) throw new Error(result.error.message ?? t("auth.failed"));
-      await navigate({ to: "/$locale/account", params: { locale: account } });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("auth.failed"));
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
     <Shell>
       <div className="mx-auto grid max-w-md gap-4">
@@ -70,30 +72,38 @@ function LoginPage() {
         <p className="text-sm text-muted">{t("auth.loginLead")}</p>
         {authEnabled ? (
           <>
-            <form
-              className="space-y-3 rounded-xl border border-border bg-card p-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void onSubmit(event.currentTarget);
+            <Form
+              registries={{ fields: registry }}
+              schema={schema}
+              onSubmit={async ({ value }) => {
+                const parsed = loginSchema.safeParse(value);
+                if (!parsed.success) {
+                  toast.error(t("auth.invalid"));
+                  return;
+                }
+                setPending(true);
+                try {
+                  const result = await authClient.signIn.email({
+                    email: parsed.data.email,
+                    password: parsed.data.password,
+                    callbackURL: `/${account}/account`,
+                  });
+                  if (result.error) throw new Error(result.error.message ?? t("auth.failed"));
+                  await navigate({ to: "/$locale/account", params: { locale: account } });
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : t("auth.failed"));
+                } finally {
+                  setPending(false);
+                }
               }}
             >
-              <Field label={t("auth.email")}>
-                <input className={controlClass} name="email" type="email" required autoComplete="email" />
-              </Field>
-              <Field label={t("auth.password")}>
-                <input
-                  className={controlClass}
-                  name="password"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="current-password"
-                />
-              </Field>
-              <Button type="submit" disabled={pending} className="h-11 w-full">
-                {pending ? t("auth.pending") : t("auth.submitLogin")}
-              </Button>
-            </form>
+              <FormContent className="rounded-xl border border-border bg-card p-4">
+                <FormFields />
+                <FormSubmit className="h-11 w-full" submittingText={t("auth.pending")} disabled={pending}>
+                  {t("auth.submitLogin")}
+                </FormSubmit>
+              </FormContent>
+            </Form>
             <Link to="/$locale/register" params={{ locale: account }} className="text-sm text-muted">
               {t("auth.needAccount")}
             </Link>

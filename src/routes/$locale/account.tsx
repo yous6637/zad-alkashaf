@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link, Navigate, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ProductDialog } from "@/components/products/product-form";
+import { AccountPending } from "@/components/layout/route-pending";
+import { ErrorPage } from "@/components/layout/status-page";
 import { Shell } from "@/components/layout/shell";
 import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
 import { TroopForm } from "@/components/troops/troop-form";
@@ -44,6 +46,10 @@ export const Route = createFileRoute("/$locale/account")({
       throw error;
     }
   },
+  pendingMs: 0,
+  pendingMinMs: 200,
+  pendingComponent: AccountPending,
+  errorComponent: ErrorPage,
   component: AccountPage,
 });
 
@@ -69,6 +75,7 @@ function AccountPage() {
   const [editing, setEditing] = useState<Listing | null | "new">(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [path, setPath] = useState<"create" | "join" | null>(null);
+  const [showRenew, setShowRenew] = useState(false);
   const t = useT();
   const localeCode = useLocale();
 
@@ -104,11 +111,7 @@ function AccountPage() {
   }, [user, t]);
 
   if (isPending || (user && !ready)) {
-    return (
-      <Shell>
-        <div className="h-48 animate-pulse rounded-xl bg-surface" />
-      </Shell>
-    );
+    return <AccountPending />;
   }
   if (!user) return <Navigate to="/$locale/login" params={{ locale: account }} />;
   if (!me) {
@@ -151,6 +154,14 @@ function AccountPage() {
       : t("troop.roleMember")
     : t("troop.roleNone");
   const manager = me.troop?.role === "troop_manager";
+  const today = new Date().toISOString().slice(0, 10);
+  const daysLeft = me.subscription?.endsOn
+    ? Math.round((Date.parse(`${me.subscription.endsOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)
+    : null;
+  const expired = subStatus === "expired";
+  const expiring = live && daysLeft !== null && daysLeft <= 30;
+  const showRequest =
+    manager && (showRenew || !me.subscription || me.subscription.status === "rejected" || !!me.pendingProof);
 
   return (
     <Shell>
@@ -240,21 +251,57 @@ function AccountPage() {
               {t("troop.suspendedBanner")}
             </p>
           ) : null}
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Stat
-              label={t("troop.sub")}
-              value={subLabel}
-              hint={me.subscription?.endsOn ? t("troop.until", { date: me.subscription.endsOn }) : t("troop.waiting")}
-            />
-            <Stat
-              label={t("troop.members")}
-              value={`${me.counts.members} / ${me.subscription?.maxMembers ?? "—"}`}
-            />
-            <Stat
-              label={t("troop.products")}
-              value={`${me.counts.products} / ${me.subscription?.maxProducts ?? "—"}`}
-            />
-          </div>
+          <section className="mt-6 rounded-xl border border-border bg-card p-4">
+            <h2 className="text-lg font-semibold">{t("troop.statusPanel")}</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Stat label={t("troop.sub")} value={subLabel} />
+              <Stat
+                label={t("troop.endsOn")}
+                value={me.subscription?.endsOn ?? t("troop.waiting")}
+              />
+              <Stat
+                label={t("troop.members")}
+                value={t("troop.usedOf", {
+                  used: me.counts.members,
+                  limit: me.subscription?.maxMembers ?? "—",
+                })}
+              />
+              <Stat
+                label={t("troop.products")}
+                value={t("troop.usedOf", {
+                  used: me.counts.products,
+                  limit: me.subscription?.maxProducts ?? "—",
+                })}
+              />
+            </div>
+          </section>
+          {me.subscription?.status === "rejected" && me.subscription.adminNote ? (
+            <p className="mt-3 rounded-lg border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
+              {t("troop.rejectionNote", { note: me.subscription.adminNote })}
+            </p>
+          ) : null}
+          {expiring || expired ? (
+            <div
+              className={`mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm ${
+                expired ? "border-danger/30 bg-danger-soft text-danger" : "border-warning/40 bg-warning-soft text-fg"
+              }`}
+            >
+              <p>{expired ? t("troop.expiredBanner") : t("troop.expiringBanner", { days: daysLeft ?? 0 })}</p>
+              {manager ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowRenew(true);
+                    requestAnimationFrame(() => {
+                      document.getElementById("subscription-request")?.scrollIntoView({ block: "nearest" });
+                    });
+                  }}
+                >
+                  {t("troop.renew")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <p className="mt-3 text-sm text-muted">
             {t("troop.statusLabel")}: {troopLabel}
             {price ? ` · ${price}` : ""}
@@ -297,18 +344,20 @@ function AccountPage() {
               </Button>
             )
           ) : null}
-          {!live ? (
+          {!live && !expired ? (
             <div className="mt-4 rounded-lg border border-border bg-danger-soft p-4 text-sm text-danger">
               {t("troop.inactiveSub")}
             </div>
           ) : null}
-          {manager ? (
-            <SubscriptionForm
-              plan={meta.plan}
-              renew={live}
-              pendingProof={me.pendingProof}
-              onDone={() => refresh().catch(() => undefined)}
-            />
+          {showRequest ? (
+            <div id="subscription-request">
+              <SubscriptionForm
+                plan={meta.plan}
+                renew={Boolean(me.subscription)}
+                pendingProof={me.pendingProof}
+                onDone={() => refresh().catch(() => undefined)}
+              />
+            </div>
           ) : null}
           {me.canClaimAdmin ? (
             <Button

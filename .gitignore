@@ -5,6 +5,7 @@ dist
 .grok
 .env
 .env.*
+!.env.example
 screenshots
 artifacts
 attachments

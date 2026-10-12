@@ -4,7 +4,7 @@ export type UserRole = "admin" | "troop_manager" | "member";
 
 export type TroopStatus = "pending" | "active" | "suspended";
 
-export type SubscriptionStatus = "pending" | "active" | "expired" | "suspended";
+export type SubscriptionStatus = "pending" | "active" | "expired" | "suspended" | "rejected";
 
 export type ListingType = "sale" | "rent" | "exchange" | "wanted";
 
@@ -78,6 +78,8 @@ export type SubscriptionRow = {
   status: SubscriptionStatus;
   payment_proof_path: string | null;
   payment_note: string;
+  paid_at: string | null;
+  admin_note: string;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;
@@ -133,6 +135,7 @@ export type ReportRow = {
   status: ReportStatus;
   handled_by: string | null;
   handled_at: string | null;
+  admin_note: string;
   created_at: string;
   updated_at: string;
 };

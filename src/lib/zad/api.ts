@@ -9,6 +9,7 @@ import { planSchema } from "@/lib/zad/plan";
 import { productRefSchema, reportSchema } from "@/lib/zad/report";
 import { proofSchema } from "@/lib/zad/subscription";
 import { troopSchema } from "@/lib/zad/troop";
+import { visibleListing } from "@/lib/zad/visibility";
 import type { Category, Listing, Me, Plan, TroopCard, Wilaya } from "@/lib/zad/types";
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -17,13 +18,34 @@ function parse<T>(schema: z.ZodType<T>, data: unknown): T {
   return result.data;
 }
 
+function listingImages(value: unknown) {
+  try {
+    const source = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(source) ? source.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function finishListing<T extends Listing>(row: T): T {
+  return { ...row, images: listingImages(row.images) };
+}
+
 function id() {
   return crypto.randomUUID();
+}
+
+async function countEvent(sql: Sql, key: "search" | "contact") {
+  await sql`
+    insert into platform_counters (key, value) values (${key}, 1)
+    on conflict (key) do update set value = platform_counters.value + 1
+  `;
 }
 
 function dbError(error: unknown): never {
   const message = error instanceof Error ? error.message : "";
   if (message.includes("LIMIT_PRODUCTS")) throw new Error("بلغت حد المنتجات في الباقة");
+  if (message.includes("LIMIT_IMAGES")) throw new Error("الحد خمس صور للمنتج");
   if (message.includes("LIMIT_MEMBERS")) throw new Error("بلغت حد الأعضاء في الباقة");
   if (message.includes("NO_ACTIVE_SUBSCRIPTION")) throw new Error("هذه العملية تحتاج اشتراكاً فعّالاً");
   if (message.includes("duplicate key") || message.includes("unique")) {
@@ -61,16 +83,14 @@ function listingSelect(locale: "ar" | "fr" = "ar") {
   p.status,
   p.troop_id as "troopId",
   t.name as "troopName",
-  to_char(coalesce(p.published_at, p.created_at), 'YYYY-MM-DD') as "createdAt"
+  to_char(coalesce(p.published_at, p.created_at), 'YYYY-MM-DD') as "createdAt",
+  coalesce((
+    select json_agg(i.storage_path order by i.sort_order, i.created_at)
+    from product_images i
+    where i.product_id = p.id
+  ), '[]'::json) as images
 `;
 }
-
-const visibleListing = `
-  p.visibility = 'public'
-  and p.status = 'active'
-  and t.status = 'active'
-  and has_active_subscription(t.id)
-`;
 
 export const getMeta = createServerFn({ method: "GET" })
   .validator((data: unknown) =>
@@ -123,7 +143,7 @@ const catalogSchema = z.object({
   operation: z.enum(["", "sale", "rent", "exchange", "wanted"]).optional(),
   condition: z.enum(["", "new", "used_good", "needs_repair"]).optional(),
   maxPrice: z.number().int().nonnegative().optional(),
-  limit: z.number().int().min(1).max(48).optional(),
+  limit: z.number().int().min(1).max(480).optional(),
   locale: z.enum(["ar", "fr"]).optional(),
 });
 
@@ -134,8 +154,8 @@ export const listProducts = createServerFn({ method: "GET" })
     const q = (data.q ?? "").replace(/[%_\\]/g, "");
     const limit = data.limit ?? 24;
     const locale = data.locale === "fr" ? "fr" : "ar";
-    return sql.query<Listing>(
-      `select ${listingSelect(locale)}
+    const rows = await sql.query<Listing & { matchCount: number }>(
+      `select ${listingSelect(locale)}, count(*) over()::int as "matchCount"
        from products p
        join troops t on t.id = p.troop_id
        join categories c on c.id = p.category_id
@@ -164,7 +184,33 @@ export const listProducts = createServerFn({ method: "GET" })
         limit,
       ],
     );
+    const searched =
+      q.length > 0 ||
+      Boolean(data.categoryId) ||
+      data.wilayaCode != null ||
+      Boolean(data.operation) ||
+      Boolean(data.condition) ||
+      data.maxPrice != null;
+    if (searched) await countEvent(sql, "search");
+    return rows.map(finishListing);
   });
+
+async function shareOrigin() {
+  const configured = process.env.BETTER_AUTH_URL?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      return "";
+    }
+  }
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    return new URL(getRequest().url).origin;
+  } catch {
+    return "";
+  }
+}
 
 export const getProduct = createServerFn({ method: "GET" })
   .validator((data: unknown) =>
@@ -198,10 +244,11 @@ export const getProduct = createServerFn({ method: "GET" })
       [item.troopId, item.id],
     );
     return {
-      item,
+      item: finishListing(item),
       logo: item.logo,
       commune: item.commune,
-      related,
+      related: related.map(finishListing),
+      origin: await shareOrigin(),
     };
   });
 
@@ -270,11 +317,12 @@ export const getTroop = createServerFn({ method: "GET" })
        order by p.created_at desc`,
       [data.id],
     );
-    return { troop, listings };
+    return { troop, listings: listings.map(finishListing), origin: await shareOrigin() };
   });
 
 async function loadMe(sql: Sql, userId: string): Promise<Me> {
   await ensureProfile(sql, userId);
+  await sql`select expire_subscriptions()`;
   const users = await sql<{ name: string; email: string; platformRole: string }>`
     select u.name, u.email, p.role as "platformRole"
     from "user" u
@@ -326,13 +374,15 @@ async function loadMe(sql: Sql, userId: string): Promise<Me> {
       maxMembers: number;
       maxProducts: number;
       proof: string;
+      adminNote: string;
     }>`
       select id, status, price_dzd::text as price,
         to_char(starts_at at time zone 'UTC', 'YYYY-MM-DD') as "startsOn",
         to_char(ends_at at time zone 'UTC', 'YYYY-MM-DD') as "endsOn",
         max_members as "maxMembers",
         max_products as "maxProducts",
-        payment_note as proof
+        payment_note as proof,
+        admin_note as "adminNote"
       from subscriptions
       where troop_id = ${troop.id}::uuid
       order by
@@ -686,6 +736,7 @@ export const saveProduct = createServerFn({ method: "POST" })
           wilaya_id = ${data.wilayaCode}
         where id = ${data.id}::uuid and troop_id = ${troop.id}::uuid
       `;
+      await storeProductImages(sql, data.id, data.images);
       return { id: data.id };
     }
     if (troop.status !== "active" || !subIsLive(me.subscription)) {
@@ -708,7 +759,25 @@ export const saveProduct = createServerFn({ method: "POST" })
     } catch (error) {
       dbError(error);
     }
+    await storeProductImages(sql, productId, data.images);
     return { id: productId };
+  });
+
+async function storeProductImages(sql: Sql, productId: string, images: string[]) {
+  const { replaceProductImages } = await import("@/lib/zad/upload.server");
+  await replaceProductImages(sql, productId, images);
+}
+
+const imageTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
+
+export const createProductImageUpload = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) =>
+    parse(z.object({ productId: z.string().uuid(), contentType: imageTypeSchema.optional() }), data),
+  )
+  .handler(async ({ context, data }) => {
+    const { issueProductImageUpload } = await import("@/lib/zad/upload.server");
+    return issueProductImageUpload(context.userId, data.productId, data.contentType ?? "image/jpeg");
   });
 
 export const setProductStatus = createServerFn({ method: "POST" })
@@ -748,7 +817,7 @@ export const listOwnProducts = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const sql = await getSql();
     const me = await requireManager(sql, context.userId);
-    return sql.query<Listing>(
+    const rows = await sql.query<Listing>(
       `select ${listingSelect()}
        from products p
        join troops t on t.id = p.troop_id
@@ -758,6 +827,7 @@ export const listOwnProducts = createServerFn({ method: "GET" })
        order by p.created_at desc`,
       [me.troop!.id],
     );
+    return rows.map(finishListing);
   });
 
 export const addMember = createServerFn({ method: "POST" })
@@ -863,6 +933,7 @@ export const getListingContact = createServerFn({ method: "GET" })
     );
     const row = rows[0];
     if (!row) return { status: "gone" as const };
+    await countEvent(sql, "contact");
     return { status: "ok" as const, phone: row.phone, email: row.email };
   });
 
@@ -927,6 +998,7 @@ export const adminOverview = createServerFn({ method: "GET" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await requireAdmin(sql, context.userId);
+    await sql`select expire_subscriptions()`;
     const troops =
       data.locale === "fr"
         ? await sql<{
@@ -976,14 +1048,19 @@ export const adminOverview = createServerFn({ method: "GET" })
       status: string;
       price: string;
       proof: string;
+      adminNote: string;
       maxMembers: number;
       maxProducts: number;
+      startsOn: string | null;
       endsOn: string | null;
+      paidAt: string | null;
     }>`
       select s.id, s.troop_id as "troopId", t.name as "troopName", s.status,
-        s.price_dzd::text as price, s.payment_note as proof, s.max_members as "maxMembers",
-        s.max_products as "maxProducts",
-        to_char(s.ends_at at time zone 'UTC', 'YYYY-MM-DD') as "endsOn"
+        s.price_dzd::text as price, s.payment_note as proof, s.admin_note as "adminNote",
+        s.max_members as "maxMembers", s.max_products as "maxProducts",
+        to_char(s.starts_at at time zone 'UTC', 'YYYY-MM-DD') as "startsOn",
+        to_char(s.ends_at at time zone 'UTC', 'YYYY-MM-DD') as "endsOn",
+        to_char(s.paid_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "paidAt"
       from subscriptions s
       join troops t on t.id = s.troop_id
       order by s.created_at desc
@@ -1042,12 +1119,41 @@ export const adminSetTroopStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+const dayField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const limitField = z.number().int().positive();
+const noteField = z.string().trim().min(1).max(500);
+
+const activateSubscriptionSchema = z
+  .object({
+    id: z.string().uuid(),
+    startsOn: dayField.optional(),
+    endsOn: dayField.optional(),
+    maxMembers: limitField.optional(),
+    maxProducts: limitField.optional(),
+  })
+  .refine((value) => !value.startsOn || !value.endsOn || value.endsOn >= value.startsOn);
+
+const subscriptionNoteSchema = z.object({
+  id: z.string().uuid(),
+  note: noteField,
+});
+
+const recordPaymentSchema = z.object({
+  id: z.string().uuid(),
+  note: noteField,
+  paidOn: dayField.optional(),
+});
+
 export const adminActivateSubscription = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((data: unknown) => parse(z.object({ id: z.string().uuid() }), data))
+  .validator((data: unknown) => parse(activateSubscriptionSchema, data))
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     await requireAdmin(sql, context.userId);
+    const startsOn = data.startsOn ?? null;
+    const endsOn = data.endsOn ?? null;
+    const maxMembers = data.maxMembers ?? null;
+    const maxProducts = data.maxProducts ?? null;
     const rows = await sql<{ troopId: string }>`
       with expired as (
         update subscriptions
@@ -1058,8 +1164,13 @@ export const adminActivateSubscription = createServerFn({ method: "POST" })
       )
       update subscriptions s
       set status = 'active',
-          starts_at = now(),
-          ends_at = now() + make_interval(days => p.duration_days),
+          starts_at = coalesce(${startsOn}::date::timestamptz, now()),
+          ends_at = coalesce(
+            ${endsOn}::date + time '23:59:59',
+            coalesce(${startsOn}::date::timestamptz, now()) + make_interval(days => p.duration_days)
+          ),
+          max_members = coalesce(${maxMembers}::int, p.max_members),
+          max_products = coalesce(${maxProducts}::int, p.max_products),
           approved_by = ${context.userId},
           approved_at = now()
       from plans p
@@ -1071,6 +1182,56 @@ export const adminActivateSubscription = createServerFn({ method: "POST" })
     if (!row) throw new Error("الاشتراك غير موجود");
     await sql`update troops set status = 'active' where id = ${row.troopId}::uuid`;
     return { ok: true };
+  });
+
+export const adminRejectSubscription = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) => parse(subscriptionNoteSchema, data))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await requireAdmin(sql, context.userId);
+    const rows = await sql<{ id: string }>`
+      update subscriptions
+      set status = 'rejected', admin_note = ${data.note}
+      where id = ${data.id}::uuid and status = 'pending'
+      returning id
+    `;
+    if (!rows[0]) throw new Error("لا يوجد طلب اشتراك قيد المراجعة");
+    return { ok: true as const };
+  });
+
+export const adminSuspendSubscription = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) => parse(subscriptionNoteSchema, data))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await requireAdmin(sql, context.userId);
+    const rows = await sql<{ id: string }>`
+      update subscriptions
+      set status = 'suspended', admin_note = ${data.note}
+      where id = ${data.id}::uuid and status = 'active'
+      returning id
+    `;
+    if (!rows[0]) throw new Error("لا يوجد اشتراك نشط");
+    return { ok: true as const };
+  });
+
+export const adminRecordPayment = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((data: unknown) => parse(recordPaymentSchema, data))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await requireAdmin(sql, context.userId);
+    const paidOn = data.paidOn ?? null;
+    const rows = await sql<{ id: string }>`
+      update subscriptions
+      set paid_at = coalesce(${paidOn}::date::timestamptz, now()),
+          admin_note = ${data.note}
+      where id = ${data.id}::uuid
+      returning id
+    `;
+    if (!rows[0]) throw new Error("الاشتراك غير موجود");
+    return { ok: true as const };
   });
 
 export const adminHideProduct = createServerFn({ method: "POST" })

@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+const imageValue = z
+  .string()
+  .min(1)
+  .max(2_000_000)
+  .refine(
+    (value) =>
+      /^products\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(value) ||
+      /^data:image\/jpeg;base64,[a-z0-9+/]+={0,2}$/i.test(value),
+    { message: "type" },
+  );
+
 const draftSchema = z.object({
   id: z.string().uuid().optional(),
   title: z.string().trim().min(2).max(120),
@@ -10,6 +21,7 @@ const draftSchema = z.object({
   salePrice: z.number().int().nonnegative().nullable(),
   rentPrice: z.number().int().nonnegative().nullable(),
   wilayaCode: z.number().int().min(1).max(58),
+  images: z.array(imageValue).max(5),
 });
 
 export const productSchema = draftSchema.superRefine((value, ctx) => {
@@ -41,12 +53,17 @@ const fieldKey: Record<string, string> = {
   wilayaCode: "gear.errWilaya",
   salePrice: "gear.errSale",
   rentPrice: "gear.errRent",
+  images: "gear.errImageType",
 };
 
 export function productFieldErrors(error: z.ZodError) {
   const errors: Record<string, string> = {};
   for (const issue of error.issues) {
     const field = String(issue.path[0] ?? "");
+    if (field === "images" && !errors.images) {
+      errors.images = issue.code === "too_big" ? "gear.errImageCount" : "gear.errImageType";
+      continue;
+    }
     const key = fieldKey[field];
     if (key && !errors[field]) errors[field] = key;
   }

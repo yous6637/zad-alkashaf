@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useLocale, useT } from "@/lib/use-locale";
@@ -6,6 +7,7 @@ export function SearchBar({ className = "" }: { className?: string }) {
   const locale = useLocale();
   const navigate = useNavigate();
   const t = useT();
+  const [pending, setPending] = useState(false);
 
   return (
     <form
@@ -13,7 +15,8 @@ export function SearchBar({ className = "" }: { className?: string }) {
       onSubmit={(event) => {
         event.preventDefault();
         const q = String(new FormData(event.currentTarget).get("q") ?? "").trim();
-        void navigate({ to: "/$locale/products", params: { locale }, search: { q } });
+        setPending(true);
+        void navigate({ to: "/$locale/products", params: { locale }, search: { q } }).finally(() => setPending(false));
       }}
     >
       <Search className="ms-3 size-5 shrink-0 text-muted" aria-hidden="true" />
@@ -24,9 +27,10 @@ export function SearchBar({ className = "" }: { className?: string }) {
       />
       <button
         type="submit"
-        className="h-11 rounded-full bg-accent px-6 text-sm font-medium text-accent-fg"
+        disabled={pending}
+        className="h-11 rounded-full bg-accent px-6 text-sm font-medium text-accent-fg disabled:opacity-60"
       >
-        {t("home.search")}
+        {pending ? t("auth.pending") : t("home.search")}
       </button>
     </form>
   );
